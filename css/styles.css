@@ -53,6 +53,9 @@ html, body {
   justify-content: center;
   gap: 20px;
 }
+.loading-overlay[hidden] {
+  display: none;
+}
 
 .spinner {
   width: 48px;
