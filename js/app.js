@@ -450,11 +450,12 @@ const App = (() => {
         console.warn('Failed to save EPUB to IndexedDB:', err);
       }
 
-      // Load all chapters (lazy loading — load first + prefetch)
-      await loadChapterText(0);
-
       // Check for saved progress
       const saved = Storage.getBookProgress(bookId);
+
+      // Load first chapter + prefetch
+      await loadChapterText(0);
+
       currentChapter = saved?.chapter || 0;
       const startChunk = saved?.chunkIndex || 0;
 
@@ -483,7 +484,7 @@ const App = (() => {
     try {
       const arrayBuffer = await Storage.getEpubData(bookEntry.id);
       if (!arrayBuffer) {
-        UI.toast('EPUB data not found. Please re-upload the file.');
+        UI.toast('EPUB data not found. Please upload the file again.');
         return;
       }
 
@@ -598,11 +599,27 @@ const App = (() => {
     });
   }
 
-  function refreshLibrary() {
+  async function refreshLibrary() {
     const books = Storage.getLibrary();
+
+    // Prune library entries that have no IDB data (stale from before IndexedDB)
+    const validBooks = [];
+    for (const b of books) {
+      try {
+        const data = await Storage.getEpubData(b.id);
+        if (data) {
+          validBooks.push(b);
+        } else {
+          Storage.removeBook(b.id);
+        }
+      } catch {
+        validBooks.push(b); // Keep on IDB error to be safe
+      }
+    }
+
     UI.renderLibrary(
-      books,
-      // On resume: try loading from IDB
+      validBooks,
+      // On resume: load from IDB
       (bookEntry) => {
         loadFromIDB(bookEntry);
       },
