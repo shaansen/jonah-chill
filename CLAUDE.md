@@ -16,7 +16,7 @@ A PWA that converts EPUB files into audiobooks using the Web Speech API (TTS). U
 ```
 index.html          - Single HTML page with upload + player views
 manifest.json       - PWA manifest (standalone, start_url: ./index.html)
-sw.js               - Service worker (cache name: epub-reader-v3)
+sw.js               - Service worker (cache name: epub-reader-v4)
 css/styles.css      - All styles (dark theme, safe-area-aware)
 js/app.js           - Main orchestrator (init, loadFile, loadFromIDB, refreshLibrary, TTS wiring)
 js/ui.js            - All DOM manipulation (views, loading overlay, library, player controls)
@@ -48,6 +48,13 @@ icons/              - SVG icons for PWA (192, 512)
 - **Storage**: EPUB ArrayBuffer saved to IndexedDB (key: `book_<hash>`), metadata to localStorage
 - **Resume**: Library click -> loadFromIDB() -> retrieves ArrayBuffer -> re-parses -> restores chapter/chunk position
 - **Progress**: Saved every 5 TTS chunks and on chapter change/pause
+
+### Background Playback & Lock Screen
+- **Two-layer audio keep-alive**: Silent `<audio>` loop (1s WAV) + Web Audio API oscillator keep the OS audio session active
+- `startAudioKeepAlive()` / `stopAudioKeepAlive()` in app.js, toggled via `updateMediaSessionState()`
+- **Media Session API**: Lock screen controls (play/pause/prev/next/skip) wired in `setupMediaSession()`
+- **Auto-resume**: `visibilitychange` listener in tts-engine.js detects if speech died in background and restarts current chunk
+- AudioContext must be created on user gesture (happens naturally via play button click)
 
 ### Key Patterns
 - Chapters use **lazy loading** (`ch.load()`) - text extracted on demand from the stored zip

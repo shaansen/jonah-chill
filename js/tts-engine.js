@@ -356,12 +356,16 @@ const TTSEngine = (() => {
     return targetIndex;
   }
 
-  // Handle visibility change
+  // Auto-resume TTS when returning from background/lock screen.
+  // The OS may kill speechSynthesis while the screen is off;
+  // detect this and restart from the current chunk.
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden && isPlaying) {
-      // Some browsers stop TTS in background
-    } else if (!document.hidden && isPaused && synth.paused) {
-      // Handled by UI
+    if (!document.hidden && isPlaying) {
+      // Check if speech was killed while we thought we were playing
+      if (!synth.speaking && !synth.pending) {
+        // Speech died in background — restart current chunk
+        speakChunk(currentChunkIndex);
+      }
     }
   });
 

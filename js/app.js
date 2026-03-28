@@ -19,7 +19,9 @@ const App = (() => {
   let sleepTimerInterval = null;
   let sleepEndOfChapter = false;
 
-  // Silent audio for Media Session
+  // Audio session keep-alive (Web Audio API)
+  let audioCtx = null;
+  let silentSource = null;
   let silentAudio = null;
 
   // Web Worker for EPUB parsing
@@ -298,27 +300,114 @@ const App = (() => {
   // --- Media Session API ---
 
   function setupMediaSession() {
-    if (!('mediaSession' in navigator)) return;
-
-    // Create silent audio element as carrier for lock screen controls
+    // Create a looping silent audio element for media session + background keep-alive.
+    // A real <audio> element playing in a loop is required on iOS to maintain
+    // an active audio session when the screen locks.
     silentAudio = document.createElement('audio');
-    silentAudio.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+    // ~1 second of near-silent WAV (mono 8kHz 8-bit, 8000 samples of 0x80)
+    silentAudio.src = createSilentWavDataUri();
     silentAudio.loop = true;
     silentAudio.volume = 0.01;
 
-    navigator.mediaSession.setActionHandler('play', () => TTSEngine.play());
-    navigator.mediaSession.setActionHandler('pause', () => TTSEngine.pause());
-    navigator.mediaSession.setActionHandler('previoustrack', () => {
-      if (currentChapter > 0) goToChapter(currentChapter - 1);
-    });
-    navigator.mediaSession.setActionHandler('nexttrack', () => {
-      if (book && currentChapter < book.chapters.length - 1) goToChapter(currentChapter + 1);
-    });
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.setActionHandler('play', () => TTSEngine.play());
+      navigator.mediaSession.setActionHandler('pause', () => TTSEngine.pause());
+      navigator.mediaSession.setActionHandler('previoustrack', () => {
+        if (currentChapter > 0) goToChapter(currentChapter - 1);
+      });
+      navigator.mediaSession.setActionHandler('nexttrack', () => {
+        if (book && currentChapter < book.chapters.length - 1) goToChapter(currentChapter + 1);
+      });
 
-    try {
-      navigator.mediaSession.setActionHandler('seekbackward', () => skipTime(-30));
-      navigator.mediaSession.setActionHandler('seekforward', () => skipTime(30));
-    } catch {}
+      try {
+        navigator.mediaSession.setActionHandler('seekbackward', () => skipTime(-30));
+        navigator.mediaSession.setActionHandler('seekforward', () => skipTime(30));
+      } catch {}
+    }
+  }
+
+  /**
+   * Generate a ~1 second silent WAV as a data URI.
+   * Mono, 8kHz, 8-bit unsigned PCM (value 128 = silence).
+   */
+  function createSilentWavDataUri() {
+    const sampleRate = 8000;
+    const numSamples = sampleRate; // 1 second
+    const dataSize = numSamples;
+    const fileSize = 44 + dataSize;
+    const buffer = new ArrayBuffer(fileSize);
+    const view = new DataView(buffer);
+
+    // RIFF header
+    writeString(view, 0, 'RIFF');
+    view.setUint32(4, fileSize - 8, true);
+    writeString(view, 8, 'WAVE');
+
+    // fmt chunk
+    writeString(view, 12, 'fmt ');
+    view.setUint32(16, 16, true);         // chunk size
+    view.setUint16(20, 1, true);          // PCM
+    view.setUint16(22, 1, true);          // mono
+    view.setUint32(24, sampleRate, true); // sample rate
+    view.setUint32(28, sampleRate, true); // byte rate
+    view.setUint16(32, 1, true);          // block align
+    view.setUint16(34, 8, true);          // bits per sample
+
+    // data chunk
+    writeString(view, 36, 'data');
+    view.setUint32(40, dataSize, true);
+    // Fill with 128 (silence for unsigned 8-bit)
+    const bytes = new Uint8Array(buffer, 44);
+    bytes.fill(128);
+
+    const blob = new Blob([buffer], { type: 'audio/wav' });
+    return URL.createObjectURL(blob);
+  }
+
+  function writeString(view, offset, str) {
+    for (let i = 0; i < str.length; i++) {
+      view.setUint8(offset + i, str.charCodeAt(i));
+    }
+  }
+
+  /**
+   * Start the Web Audio API keep-alive alongside the silent <audio> element.
+   * Two layers ensure the OS keeps our audio session active on lock screen.
+   */
+  function startAudioKeepAlive() {
+    // Start silent <audio> loop
+    if (silentAudio) {
+      silentAudio.play().catch(() => {});
+    }
+
+    // Start Web Audio API oscillator as secondary keep-alive
+    if (!audioCtx) {
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      } catch { return; }
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {});
+    }
+    if (!silentSource) {
+      const oscillator = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      gain.gain.value = 0.001; // near-silent
+      oscillator.connect(gain);
+      gain.connect(audioCtx.destination);
+      oscillator.start();
+      silentSource = oscillator;
+    }
+  }
+
+  function stopAudioKeepAlive() {
+    if (silentAudio) {
+      silentAudio.pause();
+    }
+    if (silentSource) {
+      try { silentSource.stop(); } catch {}
+      silentSource = null;
+    }
   }
 
   function updateMediaSessionMetadata() {
@@ -332,16 +421,15 @@ const App = (() => {
   }
 
   function updateMediaSessionState(state) {
-    if (!('mediaSession' in navigator)) return;
-    navigator.mediaSession.playbackState = state === 'playing' ? 'playing' : 'paused';
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = state === 'playing' ? 'playing' : 'paused';
+    }
 
-    // Start/stop silent audio to keep media session active
-    if (silentAudio) {
-      if (state === 'playing') {
-        silentAudio.play().catch(() => {});
-      } else {
-        silentAudio.pause();
-      }
+    // Start/stop audio keep-alive to maintain background audio session
+    if (state === 'playing') {
+      startAudioKeepAlive();
+    } else {
+      stopAudioKeepAlive();
     }
   }
 

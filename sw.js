@@ -1,4 +1,4 @@
-const CACHE_NAME = 'epub-reader-v3';
+const CACHE_NAME = 'epub-reader-v4';
 const ASSETS = [
   './',
   './index.html',
