@@ -6,6 +6,10 @@ const UI = (() => {
   const uploadView = document.getElementById('upload-view');
   const playerView = document.getElementById('player-view');
 
+  // Loading overlay
+  const loadingOverlay = document.getElementById('loading-overlay');
+  const loadingMessage = document.getElementById('loading-message');
+
   // Upload
   const fileInput = document.getElementById('file-input');
   const librarySection = document.getElementById('library-section');
@@ -17,6 +21,9 @@ const UI = (() => {
   const btnBack = document.getElementById('btn-back');
   const btnChapters = document.getElementById('btn-chapters');
 
+  // Book progress
+  const bookProgressFill = document.getElementById('book-progress-fill');
+
   // Player content
   const chapterTitle = document.getElementById('chapter-title');
   const currentText = document.getElementById('current-text');
@@ -27,17 +34,26 @@ const UI = (() => {
   const iconPause = document.getElementById('icon-pause');
   const btnPrev = document.getElementById('btn-prev');
   const btnNext = document.getElementById('btn-next');
+  const btnSkipBack = document.getElementById('btn-skip-back');
+  const btnSkipForward = document.getElementById('btn-skip-forward');
   const progressBar = document.getElementById('progress-bar');
   const progressFill = document.getElementById('progress-fill');
   const progressPercent = document.getElementById('progress-percent');
+  const timeRemaining = document.getElementById('time-remaining');
   const chapterProgress = document.getElementById('chapter-progress');
   const speedSlider = document.getElementById('speed-slider');
   const speedValue = document.getElementById('speed-value');
   const voiceSelect = document.getElementById('voice-select');
 
+  // Sleep timer
+  const btnSleep = document.getElementById('btn-sleep');
+  const sleepMenu = document.getElementById('sleep-menu');
+  const sleepCountdown = document.getElementById('sleep-countdown');
+
   // Chapter drawer
   const chapterDrawer = document.getElementById('chapter-drawer');
   const chapterList = document.getElementById('chapter-list');
+  const chapterSearch = document.getElementById('chapter-search');
 
   // Toast
   const toastEl = document.getElementById('toast');
@@ -71,7 +87,6 @@ const UI = (() => {
       currentText.textContent = chunkText;
       return;
     }
-    // Show a window around the current chunk
     const before = fullText.substring(Math.max(0, idx - 100), idx);
     const after = fullText.substring(idx + chunkText.length, idx + chunkText.length + 100);
 
@@ -104,6 +119,14 @@ const UI = (() => {
     chapterProgress.textContent = `Ch ${chapterNum} / ${totalChapters}`;
   }
 
+  function updateBookProgress(percent) {
+    bookProgressFill.style.width = percent + '%';
+  }
+
+  function updateTimeRemaining(text) {
+    timeRemaining.textContent = text;
+  }
+
   function populateVoices(voices, selectedUri) {
     voiceSelect.innerHTML = '';
     voices.forEach(voice => {
@@ -120,11 +143,24 @@ const UI = (() => {
     speedValue.textContent = parseFloat(val).toFixed(1) + 'x';
   }
 
-  function populateChapterList(chapters, activeIndex) {
+  function populateChapterList(chapters, activeIndex, chapterWordCounts, rate) {
     chapterList.innerHTML = '';
     chapters.forEach((ch, i) => {
       const li = document.createElement('li');
-      li.textContent = ch.title;
+      li.dataset.index = i;
+      const titleSpan = document.createElement('span');
+      titleSpan.textContent = ch.title;
+      li.appendChild(titleSpan);
+
+      // Show per-chapter time estimate
+      if (chapterWordCounts && chapterWordCounts[i] !== undefined && rate) {
+        const mins = Math.ceil(chapterWordCounts[i] / (150 * rate));
+        const timeSpan = document.createElement('span');
+        timeSpan.className = 'chapter-time';
+        timeSpan.textContent = `~${mins} min`;
+        li.appendChild(timeSpan);
+      }
+
       if (i === activeIndex) li.classList.add('active');
       li.addEventListener('click', () => {
         chapterDrawer.hidden = true;
@@ -132,14 +168,30 @@ const UI = (() => {
       });
       chapterList.appendChild(li);
     });
+
+    // Reset search
+    if (chapterSearch) chapterSearch.value = '';
   }
 
   function showChapterDrawer() {
     chapterDrawer.hidden = false;
+    if (chapterSearch) {
+      chapterSearch.value = '';
+      filterChapters('');
+    }
   }
 
   function hideChapterDrawer() {
     chapterDrawer.hidden = true;
+  }
+
+  function filterChapters(query) {
+    const items = chapterList.querySelectorAll('li');
+    const q = query.toLowerCase();
+    items.forEach(li => {
+      const text = li.textContent.toLowerCase();
+      li.classList.toggle('hidden', q !== '' && !text.includes(q));
+    });
   }
 
   function renderLibrary(books, onResume, onDelete) {
@@ -150,7 +202,6 @@ const UI = (() => {
     librarySection.hidden = false;
     libraryList.innerHTML = '';
 
-    // Sort by most recently read
     const sorted = [...books].sort((a, b) => (b.lastRead || 0) - (a.lastRead || 0));
     sorted.forEach(book => {
       const div = document.createElement('div');
@@ -192,8 +243,37 @@ const UI = (() => {
     }, duration);
   }
 
+  function showLoading(message) {
+    loadingMessage.textContent = message || 'Loading...';
+    loadingOverlay.hidden = false;
+  }
+
+  function hideLoading() {
+    loadingOverlay.hidden = true;
+  }
+
   function setLoading(loading) {
     uploadView.classList.toggle('loading', loading);
+  }
+
+  // Sleep timer UI
+  function showSleepMenu() {
+    sleepMenu.hidden = false;
+  }
+
+  function hideSleepMenu() {
+    sleepMenu.hidden = true;
+  }
+
+  function updateSleepCountdown(text) {
+    if (text) {
+      sleepCountdown.textContent = text;
+      sleepCountdown.hidden = false;
+      btnSleep.classList.add('active');
+    } else {
+      sleepCountdown.hidden = true;
+      btnSleep.classList.remove('active');
+    }
   }
 
   function escapeHtml(str) {
@@ -209,6 +289,13 @@ const UI = (() => {
   chapterDrawer.querySelector('.drawer-backdrop')?.addEventListener('click', hideChapterDrawer);
   chapterDrawer.querySelector('.drawer-close')?.addEventListener('click', hideChapterDrawer);
 
+  // Chapter search filter
+  if (chapterSearch) {
+    chapterSearch.addEventListener('input', (e) => {
+      filterChapters(e.target.value);
+    });
+  }
+
   return {
     showView,
     setBookInfo,
@@ -217,6 +304,8 @@ const UI = (() => {
     highlightCurrentText,
     setPlayState,
     updateProgress,
+    updateBookProgress,
+    updateTimeRemaining,
     populateVoices,
     setSpeed,
     populateChapterList,
@@ -224,7 +313,12 @@ const UI = (() => {
     hideChapterDrawer,
     renderLibrary,
     toast,
+    showLoading,
+    hideLoading,
     setLoading,
+    showSleepMenu,
+    hideSleepMenu,
+    updateSleepCountdown,
     // Elements for event binding
     fileInput,
     btnBack,
@@ -232,6 +326,10 @@ const UI = (() => {
     btnPlay,
     btnPrev,
     btnNext,
+    btnSkipBack,
+    btnSkipForward,
+    btnSleep,
+    sleepMenu,
     progressBar,
     speedSlider,
     voiceSelect,

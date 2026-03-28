@@ -1,18 +1,114 @@
 /**
  * EPUB parser using JSZip.
  * Extracts metadata, chapter list, and text content from EPUB files.
+ * Supports DRM detection, lazy chapter loading, and robust path resolution.
  */
 const EpubParser = (() => {
 
+  // Known font obfuscation algorithms (not real DRM)
+  const FONT_OBFUSCATION_ALGORITHMS = [
+    'http://ns.adobe.com/pdf/enc#RC',
+    'http://www.idpf.org/2008/embedding'
+  ];
+
+  /**
+   * Try to get a file from the zip, handling URL-encoded paths.
+   */
+  function getZipFile(zip, path) {
+    if (!path) return null;
+    // Try exact path first
+    let file = zip.file(path);
+    if (file) return file;
+    // Try decoded
+    try {
+      const decoded = decodeURIComponent(path);
+      file = zip.file(decoded);
+      if (file) return file;
+    } catch {}
+    // Try encoded
+    const encoded = path.split('/').map(p => encodeURIComponent(p)).join('/');
+    file = zip.file(encoded);
+    if (file) return file;
+    // Try case-insensitive search
+    const lower = path.toLowerCase();
+    const match = zip.file(new RegExp('^' + lower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i'));
+    return match.length > 0 ? match[0] : null;
+  }
+
+  /**
+   * Resolve a relative href against a base path.
+   * Handles URL-encoded paths, fragments, and file-path bases.
+   */
+  function resolveHref(base, href) {
+    if (!href) return base || '';
+    // Strip fragment
+    const hashIdx = href.indexOf('#');
+    const cleanHref = hashIdx >= 0 ? href.substring(0, hashIdx) : href;
+    if (!cleanHref) return base || '';
+    // Decode for resolution
+    let decodedHref;
+    try { decodedHref = decodeURIComponent(cleanHref); } catch { decodedHref = cleanHref; }
+
+    if (!base || decodedHref.startsWith('/')) return decodedHref;
+
+    // Ensure base is a directory (strip filename if present)
+    let baseDir = base;
+    if (baseDir && !baseDir.endsWith('/')) {
+      const lastSlash = baseDir.lastIndexOf('/');
+      baseDir = lastSlash >= 0 ? baseDir.substring(0, lastSlash + 1) : '';
+    }
+
+    const combined = baseDir + decodedHref;
+    const parts = combined.split('/');
+    const resolved = [];
+    for (const part of parts) {
+      if (part === '..') { resolved.pop(); }
+      else if (part !== '.' && part !== '') { resolved.push(part); }
+    }
+    return resolved.join('/');
+  }
+
+  /**
+   * Check for DRM encryption. Throws if real DRM is found.
+   * Font obfuscation is allowed (not real DRM).
+   */
+  async function checkDRM(zip) {
+    // Check rights.xml
+    const rightsFile = getZipFile(zip, 'META-INF/rights.xml');
+    if (rightsFile) {
+      throw new Error('This EPUB is DRM-protected and cannot be read. Please use a DRM-free EPUB file.');
+    }
+
+    // Check encryption.xml
+    const encFile = getZipFile(zip, 'META-INF/encryption.xml');
+    if (!encFile) return; // No encryption
+
+    const encXml = await encFile.async('text');
+    const encDoc = new DOMParser().parseFromString(encXml, 'application/xml');
+    const encMethods = encDoc.querySelectorAll('EncryptedData');
+
+    for (const enc of encMethods) {
+      const algorithm = enc.querySelector('EncryptionMethod')?.getAttribute('Algorithm') || '';
+      if (!FONT_OBFUSCATION_ALGORITHMS.includes(algorithm)) {
+        throw new Error('This EPUB is DRM-protected and cannot be read. Please use a DRM-free EPUB file.');
+      }
+    }
+  }
+
   /**
    * Parse an EPUB file (as ArrayBuffer) and return structured book data.
-   * Returns: { title, author, chapters: [{ title, text }] }
+   * Returns: { title, author, chapters: [{ title, text, load() }], zip }
+   * Chapters are lazy-loaded stubs — call chapter.load() to get text.
    */
   async function parse(arrayBuffer) {
     const zip = await JSZip.loadAsync(arrayBuffer);
 
+    // DRM check first
+    await checkDRM(zip);
+
     // 1. Find the .opf file via container.xml
-    const containerXml = await zip.file('META-INF/container.xml')?.async('text');
+    const containerFile = getZipFile(zip, 'META-INF/container.xml');
+    const containerXml = containerFile ? await containerFile.async('text') : null;
     if (!containerXml) throw new Error('Invalid EPUB: missing container.xml');
 
     const containerDoc = new DOMParser().parseFromString(containerXml, 'application/xml');
@@ -20,7 +116,8 @@ const EpubParser = (() => {
     if (!rootfilePath) throw new Error('Invalid EPUB: no rootfile found');
 
     // 2. Parse the .opf file
-    const opfText = await zip.file(rootfilePath)?.async('text');
+    const opfFile = getZipFile(zip, rootfilePath);
+    const opfText = opfFile ? await opfFile.async('text') : null;
     if (!opfText) throw new Error('Invalid EPUB: missing OPF file');
 
     const opfDoc = new DOMParser().parseFromString(opfText, 'application/xml');
@@ -30,37 +127,56 @@ const EpubParser = (() => {
     const title = getMetaText(opfDoc, 'title') || 'Unknown Title';
     const author = getMetaText(opfDoc, 'creator') || 'Unknown Author';
 
-    // 4. Build manifest map (id → href)
+    // 4. Build manifest map (id -> href)
     const manifestMap = {};
     for (const item of opfDoc.querySelectorAll('manifest > item')) {
       manifestMap[item.getAttribute('id')] = item.getAttribute('href');
     }
 
-    // 5. Get spine order (list of idref)
+    // 5. Get spine order
     const spineRefs = [];
     for (const itemref of opfDoc.querySelectorAll('spine > itemref')) {
       spineRefs.push(itemref.getAttribute('idref'));
     }
 
-    // 6. Try to parse TOC for chapter titles
+    // 6. Parse TOC for chapter titles
     const tocTitles = await parseToc(zip, opfDoc, opfDir, manifestMap);
 
-    // 7. Extract text for each spine item
+    // 7. Build lazy chapter stubs
+    const chapterCache = new Map();
     const chapters = [];
+
     for (let i = 0; i < spineRefs.length; i++) {
       const href = manifestMap[spineRefs[i]];
       if (!href) continue;
 
       const filePath = resolveHref(opfDir, href);
-      const content = await zip.file(filePath)?.async('text');
-      if (!content) continue;
+      // Quick check that the file exists
+      const file = getZipFile(zip, filePath);
+      if (!file) continue;
 
-      const text = extractText(content);
-      if (!text.trim()) continue;
+      const chapterTitle = tocTitles[href] || tocTitles[filePath] || null;
 
+      // Try decoded path as well for TOC matching
+      let resolvedTitle = chapterTitle;
+      if (!resolvedTitle) {
+        try {
+          resolvedTitle = tocTitles[decodeURIComponent(href)] || tocTitles[decodeURIComponent(filePath)];
+        } catch {}
+      }
+
+      const idx = chapters.length;
       chapters.push({
-        title: tocTitles[href] || tocTitles[filePath] || `Chapter ${chapters.length + 1}`,
-        text: text.trim()
+        title: resolvedTitle || `Chapter ${idx + 1}`,
+        text: null, // lazy — populated by load()
+        async load() {
+          if (chapterCache.has(idx)) return chapterCache.get(idx);
+          const content = await file.async('text');
+          const text = extractText(content).trim();
+          chapterCache.set(idx, text);
+          this.text = text;
+          return text;
+        }
       });
     }
 
@@ -68,11 +184,10 @@ const EpubParser = (() => {
       throw new Error('No readable content found in this EPUB');
     }
 
-    return { title, author, chapters };
+    return { title, author, chapters, _zip: zip };
   }
 
   function getMetaText(doc, localName) {
-    // Try dc: namespace first, then plain
     const el = doc.querySelector(`metadata > *|${localName}`) ||
                doc.getElementsByTagNameNS('http://purl.org/dc/elements/1.1/', localName)[0];
     return el?.textContent?.trim() || '';
@@ -86,16 +201,21 @@ const EpubParser = (() => {
     if (navItem) {
       const navHref = navItem.getAttribute('href');
       const navPath = resolveHref(opfDir, navHref);
-      const navContent = await zip.file(navPath)?.async('text');
+      const navFile = getZipFile(zip, navPath);
+      const navContent = navFile ? await navFile.async('text') : null;
       if (navContent) {
         const navDoc = new DOMParser().parseFromString(navContent, 'application/xhtml+xml');
         const navEl = navDoc.querySelector('nav[*|type="toc"], nav.toc, nav');
         if (navEl) {
           for (const a of navEl.querySelectorAll('a[href]')) {
-            const href = a.getAttribute('href').split('#')[0];
-            const fullHref = resolveHref(opfDir, resolveHref(navHref.substring(0, navHref.lastIndexOf('/') + 1), href));
-            titles[fullHref] = a.textContent.trim();
-            titles[href] = a.textContent.trim();
+            const rawHref = a.getAttribute('href').split('#')[0];
+            if (!rawHref) continue;
+            const resolved = resolveHref(navPath, rawHref);
+            const label = a.textContent.trim();
+            titles[resolved] = label;
+            titles[rawHref] = label;
+            try { titles[decodeURIComponent(rawHref)] = label; } catch {}
+            try { titles[decodeURIComponent(resolved)] = label; } catch {}
           }
         }
       }
@@ -104,17 +224,21 @@ const EpubParser = (() => {
     // Try EPUB2 toc.ncx
     const tocId = opfDoc.querySelector('spine')?.getAttribute('toc');
     if (tocId && manifestMap[tocId]) {
-      const ncxPath = resolveHref(opfDir, manifestMap[tocId]);
-      const ncxContent = await zip.file(ncxPath)?.async('text');
+      const ncxHref = manifestMap[tocId];
+      const ncxPath = resolveHref(opfDir, ncxHref);
+      const ncxFile = getZipFile(zip, ncxPath);
+      const ncxContent = ncxFile ? await ncxFile.async('text') : null;
       if (ncxContent) {
         const ncxDoc = new DOMParser().parseFromString(ncxContent, 'application/xml');
         for (const navPoint of ncxDoc.querySelectorAll('navPoint')) {
           const label = navPoint.querySelector('navLabel > text')?.textContent?.trim();
           const src = navPoint.querySelector('content')?.getAttribute('src')?.split('#')[0];
           if (label && src) {
-            const fullSrc = resolveHref(opfDir, resolveHref(manifestMap[tocId].substring(0, manifestMap[tocId].lastIndexOf('/') + 1), src));
-            titles[fullSrc] = label;
+            const resolved = resolveHref(ncxPath, src);
+            titles[resolved] = label;
             titles[src] = label;
+            try { titles[decodeURIComponent(src)] = label; } catch {}
+            try { titles[decodeURIComponent(resolved)] = label; } catch {}
           }
         }
       }
@@ -123,22 +247,8 @@ const EpubParser = (() => {
     return titles;
   }
 
-  function resolveHref(base, href) {
-    if (!base || href.startsWith('/')) return href;
-    // Simple path resolution
-    const baseParts = base.split('/').filter(Boolean);
-    const hrefParts = href.split('/');
-    const result = [...baseParts];
-    for (const part of hrefParts) {
-      if (part === '..') result.pop();
-      else if (part !== '.') result.push(part);
-    }
-    return result.join('/');
-  }
-
   function extractText(html) {
     const doc = new DOMParser().parseFromString(html, 'application/xhtml+xml');
-    // If XHTML parsing fails, try HTML
     if (doc.querySelector('parsererror')) {
       const doc2 = new DOMParser().parseFromString(html, 'text/html');
       return doc2.body?.textContent || '';
@@ -146,5 +256,5 @@ const EpubParser = (() => {
     return doc.body?.textContent || doc.documentElement?.textContent || '';
   }
 
-  return { parse };
+  return { parse, resolveHref, extractText, getZipFile };
 })();

@@ -21,6 +21,12 @@
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
+  <!-- Loading Spinner Overlay -->
+  <div id="loading-overlay" class="loading-overlay" hidden>
+    <div class="spinner"></div>
+    <p id="loading-message">Loading EPUB...</p>
+  </div>
+
   <!-- Upload View -->
   <div id="upload-view" class="view active">
     <div class="upload-container">
@@ -64,6 +70,11 @@
       </button>
     </header>
 
+    <!-- Book-wide progress bar -->
+    <div id="book-progress-bar" class="book-progress-bar">
+      <div id="book-progress-fill" class="book-progress-fill"></div>
+    </div>
+
     <main class="player-content">
       <div id="chapter-title" class="chapter-title">Chapter 1</div>
       <div id="current-text" class="current-text">Press play to start listening...</div>
@@ -81,6 +92,9 @@
             </svg>
           </button>
         </div>
+        <div class="drawer-search">
+          <input type="text" id="chapter-search" class="chapter-search" placeholder="Search chapters..." aria-label="Search chapters">
+        </div>
         <ul id="chapter-list" class="chapter-list"></ul>
       </div>
     </div>
@@ -93,6 +107,7 @@
         </div>
         <div class="progress-labels">
           <span id="progress-percent">0%</span>
+          <span id="time-remaining"></span>
           <span id="chapter-progress">Ch 1 / 1</span>
         </div>
       </div>
@@ -103,6 +118,12 @@
             <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
           </svg>
         </button>
+        <button id="btn-skip-back" class="icon-btn skip-btn" aria-label="Skip back 30 seconds">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 5V1L7 6l5 5V7a6 6 0 1 1-6 6"/>
+          </svg>
+          <span class="skip-label">30</span>
+        </button>
         <button id="btn-play" class="play-btn" aria-label="Play">
           <svg id="icon-play" width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
             <path d="M8 5v14l11-7z"/>
@@ -110,6 +131,12 @@
           <svg id="icon-pause" width="32" height="32" viewBox="0 0 24 24" fill="currentColor" hidden>
             <path d="M6 19h4V5H6zm8-14v14h4V5z"/>
           </svg>
+        </button>
+        <button id="btn-skip-forward" class="icon-btn skip-btn" aria-label="Skip forward 30 seconds">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 5V1l5 5-5 5V7a6 6 0 1 1 6 6"/>
+          </svg>
+          <span class="skip-label">30</span>
         </button>
         <button id="btn-next" class="icon-btn" aria-label="Next chapter">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
@@ -126,6 +153,22 @@
         <div class="voice-control">
           <label for="voice-select">Voice</label>
           <select id="voice-select"></select>
+        </div>
+        <!-- Sleep Timer -->
+        <div class="sleep-control">
+          <button id="btn-sleep" class="icon-btn sleep-btn" aria-label="Sleep timer">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            </svg>
+            <span id="sleep-countdown" class="sleep-countdown" hidden></span>
+          </button>
+          <div id="sleep-menu" class="sleep-menu" hidden>
+            <button data-minutes="15">15 min</button>
+            <button data-minutes="30">30 min</button>
+            <button data-minutes="60">60 min</button>
+            <button data-minutes="chapter">End of chapter</button>
+            <button data-minutes="off">Off</button>
+          </div>
         </div>
       </div>
     </div>

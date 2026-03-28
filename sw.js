@@ -1,4 +1,4 @@
-const CACHE_NAME = 'epub-reader-v1';
+const CACHE_NAME = 'epub-reader-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -8,6 +8,7 @@ const ASSETS = [
   './js/tts-engine.js',
   './js/storage.js',
   './js/ui.js',
+  './js/epub-worker.js',
   './manifest.json',
   './icons/icon-192.svg',
   './icons/icon-512.svg',

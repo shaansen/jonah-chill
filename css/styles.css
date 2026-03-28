@@ -41,6 +41,37 @@ html, body {
   flex-direction: column;
 }
 
+/* Loading Overlay */
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: rgba(26, 26, 46, 0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid var(--bg-tertiary);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-overlay p {
+  color: var(--text-secondary);
+  font-size: 1rem;
+}
+
 /* Upload View */
 .upload-container {
   flex: 1;
@@ -173,6 +204,20 @@ html, body {
   color: var(--text-secondary);
 }
 
+/* Book-wide Progress Bar */
+.book-progress-bar {
+  width: 100%;
+  height: 3px;
+  background: var(--bg-tertiary);
+  flex-shrink: 0;
+}
+.book-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  width: 0%;
+  transition: width 0.5s ease;
+}
+
 /* Player Content */
 .player-content {
   flex: 1;
@@ -237,12 +282,27 @@ html, body {
   font-size: 0.75rem;
   color: var(--text-muted);
 }
+#time-remaining {
+  color: var(--text-secondary);
+}
 
 .controls-row {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 32px;
+  gap: 16px;
+}
+
+/* Skip buttons */
+.skip-btn {
+  position: relative;
+  flex-direction: column;
+  gap: 0;
+}
+.skip-label {
+  font-size: 0.6rem;
+  color: var(--text-secondary);
+  margin-top: -4px;
 }
 
 .settings-row {
@@ -280,6 +340,56 @@ html, body {
   width: 100%;
 }
 
+/* Sleep Timer */
+.sleep-control {
+  position: relative;
+}
+.sleep-btn {
+  position: relative;
+}
+.sleep-btn.active svg {
+  color: var(--accent);
+}
+.sleep-countdown {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  font-size: 0.55rem;
+  color: var(--accent);
+  font-weight: 700;
+  background: var(--bg-secondary);
+  padding: 1px 3px;
+  border-radius: 3px;
+}
+.sleep-menu {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: 8px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius);
+  padding: 6px 0;
+  min-width: 140px;
+  z-index: 50;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+}
+.sleep-menu button {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.sleep-menu button:hover,
+.sleep-menu button:active {
+  background: rgba(255,255,255,0.1);
+}
+
 /* Buttons */
 .icon-btn {
   background: none;
@@ -314,6 +424,9 @@ html, body {
 }
 .play-btn:active {
   transform: scale(0.93);
+}
+.play-btn svg[hidden] {
+  display: none;
 }
 
 /* Range Slider */
@@ -372,6 +485,28 @@ input[type="range"]::-webkit-slider-thumb {
 .drawer-header h3 {
   font-size: 1.1rem;
 }
+
+/* Chapter search */
+.drawer-search {
+  padding: 8px 16px;
+}
+.chapter-search {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  outline: none;
+}
+.chapter-search:focus {
+  border-color: var(--accent);
+}
+.chapter-search::placeholder {
+  color: var(--text-muted);
+}
+
 .chapter-list {
   flex: 1;
   overflow-y: auto;
@@ -392,6 +527,15 @@ input[type="range"]::-webkit-slider-thumb {
   border-left-color: var(--accent);
   color: var(--accent);
   background: var(--accent-dim);
+}
+.chapter-list li .chapter-time {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.chapter-list li.hidden {
+  display: none;
 }
 
 /* Toast */

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EPUB Reader — Tests</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+      background: #1a1a2e;
+      color: #eee;
+      padding: 24px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    h1 { margin-bottom: 20px; font-size: 1.5rem; }
+    .summary {
+      padding: 16px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 1.1rem;
+      margin-bottom: 24px;
+    }
+    .all-pass { background: rgba(46, 204, 113, 0.2); color: #2ecc71; }
+    .has-fail { background: rgba(231, 76, 60, 0.2); color: #e74c3c; }
+    .suite { margin-bottom: 24px; }
+    .suite h2 {
+      font-size: 1rem;
+      color: #aaa;
+      margin-bottom: 8px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    .test {
+      padding: 8px 12px;
+      border-radius: 6px;
+      margin-bottom: 4px;
+      font-size: 0.9rem;
+    }
+    .test.pass { background: rgba(46, 204, 113, 0.1); }
+    .test.fail { background: rgba(231, 76, 60, 0.15); }
+    .indicator {
+      display: inline-block;
+      width: 40px;
+      font-weight: 700;
+      font-size: 0.75rem;
+    }
+    .test.pass .indicator { color: #2ecc71; }
+    .test.fail .indicator { color: #e74c3c; }
+    .error {
+      margin-top: 6px;
+      padding: 8px;
+      background: rgba(0,0,0,0.3);
+      border-radius: 4px;
+      font-size: 0.8rem;
+      color: #e74c3c;
+      white-space: pre-wrap;
+    }
+    #status { color: #aaa; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <h1>EPUB Reader Tests</h1>
+  <div id="status">Running tests...</div>
+  <div id="results"></div>
+
+  <!-- Dependencies: JSZip needed for EPUB generation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+  <!-- Modules under test (loaded without DOM-dependent init) -->
+  <script src="../js/storage.js"></script>
+  <script src="../js/epub-parser.js"></script>
+
+  <!-- TTS engine needs speechSynthesis stub for non-TTS tests -->
+  <script>
+    // Ensure speechSynthesis exists for TTS module to load
+    if (!window.speechSynthesis) {
+      window.speechSynthesis = {
+        getVoices: () => [],
+        speak: () => {},
+        cancel: () => {},
+        pause: () => {},
+        resume: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        speaking: false,
+        paused: false
+      };
+    }
+  </script>
+  <script src="../js/tts-engine.js"></script>
+
+  <!-- Test framework and tests -->
+  <script src="test-runner.js"></script>
+  <script src="test-helpers.js"></script>
+  <script src="test-epub-parser.js"></script>
+  <script src="test-tts-engine.js"></script>
+  <script src="test-storage.js"></script>
+
+  <!-- Run tests -->
+  <script>
+    (async () => {
+      const status = document.getElementById('status');
+      const container = document.getElementById('results');
+      try {
+        const results = await TestRunner.run();
+        status.textContent = `Done in ${performance.now().toFixed(0)}ms`;
+        TestRunner.renderResults(results, container);
+      } catch (err) {
+        status.textContent = 'Test runner error: ' + err.message;
+        console.error(err);
+      }
+    })();
+  </script>
+</body>
+</html>
