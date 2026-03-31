@@ -205,16 +205,17 @@ const App = (() => {
   }
 
   function findChunkForOffset(text, charOffset) {
-    // TTS chunks text by sentences ~200 chars. Estimate chunk index.
-    const chunks = TTSEngine.getChunksForText ? TTSEngine.getChunksForText(text) : null;
-    if (!chunks || chunks.length === 0) {
-      // Fallback: estimate assuming ~200 chars per chunk
-      return Math.floor(charOffset / 200);
-    }
-    let pos = 0;
+    const chunks = TTSEngine.splitIntoChunks(text);
+    if (!chunks || chunks.length === 0) return 0;
+
+    // Walk through the original text matching each chunk's position
+    let searchPos = 0;
     for (let i = 0; i < chunks.length; i++) {
-      if (pos + chunks[i].length > charOffset) return i;
-      pos += chunks[i].length;
+      const chunkStart = text.indexOf(chunks[i], searchPos);
+      if (chunkStart === -1) continue;
+      const chunkEnd = chunkStart + chunks[i].length;
+      if (charOffset < chunkEnd) return i;
+      searchPos = chunkEnd;
     }
     return chunks.length - 1;
   }
@@ -387,7 +388,7 @@ const App = (() => {
       searchDebounce = setTimeout(async () => {
         const results = await searchBook(query);
         UI.renderSearchResults(results, (r) => {
-          goToChapter(r.chapterIndex, false, findChunkForOffset(
+          goToChapter(r.chapterIndex, true, findChunkForOffset(
             book.chapters[r.chapterIndex].text || '', r.charOffset
           ));
         });
