@@ -4,7 +4,9 @@
  * Shared by both Kokoro and Web Speech TTS adapters.
  */
 
+// Default for Web Speech. Kokoro uses KOKORO_CHUNK_LENGTH.
 export const MAX_CHUNK_LENGTH = 180;
+export const KOKORO_CHUNK_LENGTH = 500;
 
 export const ABBREVIATIONS = new Set([
   'dr', 'mr', 'mrs', 'ms', 'prof', 'sr', 'jr', 'st', 'ave', 'blvd',
@@ -55,7 +57,7 @@ export function isNonSentenceEnd(text, dotIndex) {
 /**
  * Split an oversized sentence at clause boundaries.
  */
-export function splitLongSentence(sentence, result) {
+export function splitLongSentence(sentence, result, maxLen = MAX_CHUNK_LENGTH) {
   const clausePattern = /[,;:\u2014]\s*/g;
   const clauses = [];
   let lastIdx = 0;
@@ -72,13 +74,14 @@ export function splitLongSentence(sentence, result) {
   if (clauses.length > 1) {
     let buffer = '';
     for (const clause of clauses) {
-      if (buffer.length + clause.length > MAX_CHUNK_LENGTH && buffer.length > 0) {
+      if (buffer.length + clause.length > maxLen && buffer.length > 0) {
         result.push(buffer.trim());
         buffer = '';
       }
-      if (clause.length > MAX_CHUNK_LENGTH) {
+      if (clause.length > maxLen) {
         if (buffer) { result.push(buffer.trim()); buffer = ''; }
-        const words = clause.match(/.{1,180}(?:\s|$)/g) || [clause];
+        const re = new RegExp(`.{1,${maxLen}}(?:\\s|$)`, 'g');
+        const words = clause.match(re) || [clause];
         for (const w of words) {
           if (w.trim()) result.push(w.trim());
         }
@@ -88,7 +91,8 @@ export function splitLongSentence(sentence, result) {
     }
     if (buffer.trim()) result.push(buffer.trim());
   } else {
-    const parts = sentence.match(/.{1,180}(?:\s|$)/g) || [sentence];
+    const re = new RegExp(`.{1,${maxLen}}(?:\\s|$)`, 'g');
+    const parts = sentence.match(re) || [sentence];
     for (const part of parts) {
       if (part.trim()) result.push(part.trim());
     }
@@ -96,9 +100,11 @@ export function splitLongSentence(sentence, result) {
 }
 
 /**
- * Split text into chunks at sentence boundaries, keeping each under MAX_CHUNK_LENGTH.
+ * Split text into chunks at sentence boundaries, keeping each under maxLen.
+ * @param {string} text
+ * @param {number} maxLen - max characters per chunk (default MAX_CHUNK_LENGTH)
  */
-export function splitIntoChunks(text) {
+export function splitIntoChunks(text, maxLen = MAX_CHUNK_LENGTH) {
   if (!text || !text.trim()) return [''];
 
   const sentences = [];
@@ -125,16 +131,16 @@ export function splitIntoChunks(text) {
   let buffer = '';
 
   for (const sentence of sentences) {
-    if (buffer.length + sentence.length > MAX_CHUNK_LENGTH && buffer.length > 0) {
+    if (buffer.length + sentence.length > maxLen && buffer.length > 0) {
       result.push(buffer.trim());
       buffer = '';
     }
-    if (sentence.length > MAX_CHUNK_LENGTH) {
+    if (sentence.length > maxLen) {
       if (buffer) {
         result.push(buffer.trim());
         buffer = '';
       }
-      splitLongSentence(sentence, result);
+      splitLongSentence(sentence, result, maxLen);
     } else {
       buffer += sentence;
     }

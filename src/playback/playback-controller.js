@@ -6,7 +6,7 @@
  * Pre-generates next 2 chunks while current plays (double-buffering).
  */
 import { getState, setState } from '../store.js';
-import { splitIntoChunks } from '../tts/text-chunker.js';
+import { splitIntoChunks, KOKORO_CHUNK_LENGTH } from '../tts/text-chunker.js';
 import * as KokoroTTS from '../tts/kokoro-tts.js';
 import * as WebSpeechTTS from '../tts/web-speech-tts.js';
 import * as AudioManager from './audio-manager.js';
@@ -35,7 +35,9 @@ export function setCallbacks({ chunkStart, chunkEnd, finished, stateChange }) {
 
 export function setText(text, startChunkIndex = 0) {
   stop();
-  chunks = splitIntoChunks(text);
+  const state = getState();
+  const maxLen = state.ttsEngine === 'kokoro' ? KOKORO_CHUNK_LENGTH : undefined;
+  chunks = splitIntoChunks(text, maxLen);
   currentChunkIndex = Math.min(startChunkIndex, chunks.length - 1);
   audioQueue = [];
   prefetchPromises.clear();
@@ -86,7 +88,7 @@ export async function play() {
 
 async function playKokoroLoop() {
   // Kick off prefetch for the first few chunks immediately
-  prefetchKokoroChunks(currentChunkIndex, 3);
+  prefetchKokoroChunks(currentChunkIndex, 5);
 
   while (isPlaying && !stopped && currentChunkIndex < chunks.length) {
     const idx = currentChunkIndex;
@@ -107,7 +109,7 @@ async function playKokoroLoop() {
     if (!isPlaying || stopped) break;
 
     // Pre-fetch ahead while current chunk plays
-    prefetchKokoroChunks(idx + 1, 3);
+    prefetchKokoroChunks(idx + 1, 5);
 
     // Play the audio blob
     try {
