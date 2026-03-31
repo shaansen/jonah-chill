@@ -1,12 +1,12 @@
 /**
  * Text chunking for TTS — split text at sentence boundaries,
  * respecting abbreviations, decimals, ellipsis, and initials.
- * Shared by both Kokoro and Web Speech TTS adapters.
+ * Shared by both Piper and Web Speech TTS adapters.
  */
 
-// Default for Web Speech. Kokoro uses KOKORO_CHUNK_LENGTH.
+// Default for Web Speech. Piper uses PIPER_CHUNK_LENGTH.
 export const MAX_CHUNK_LENGTH = 180;
-export const KOKORO_CHUNK_LENGTH = 500;
+export const PIPER_CHUNK_LENGTH = 500;
 
 export const ABBREVIATIONS = new Set([
   'dr', 'mr', 'mrs', 'ms', 'prof', 'sr', 'jr', 'st', 'ave', 'blvd',

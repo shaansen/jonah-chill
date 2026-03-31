@@ -6,8 +6,12 @@
 import { setState } from '../store.js';
 
 let piperModule = null;
+let session = null;
 let initialized = false;
 let initializing = false;
+
+// Use jsdelivr for ONNX WASM to match our CSP (library defaults to cdnjs.cloudflare.com)
+const ONNX_WASM_BASE = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/';
 
 export async function init() {
   if (initialized || initializing) return;
@@ -25,15 +29,51 @@ export async function init() {
       }
     });
 
+    // Create session with wasmPaths overriding ONNX WASM to jsdelivr
+    session = new piperModule.TtsSession({
+      voiceId: 'en_US-amy-medium',
+      wasmPaths: {
+        onnxWasm: ONNX_WASM_BASE,
+        piperData: 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize.data',
+        piperWasm: 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize.wasm',
+      },
+    });
+    await session.waitReady;
+
     initialized = true;
     setState({
       piperModelLoaded: true,
       piperDownloadProgress: 100,
     });
   } catch (err) {
-    console.error('PiperTTS: init failed', err);
-    initializing = false;
-    throw err;
+    console.error('PiperTTS: init failed, flushing cache and retrying...', err);
+    try {
+      await piperModule.flush();
+      await piperModule.download('en_US-amy-medium', (progress) => {
+        if (progress.total) {
+          const pct = Math.round((progress.loaded / progress.total) * 100);
+          setState({ piperDownloadProgress: pct });
+        }
+      });
+      session = new piperModule.TtsSession({
+        voiceId: 'en_US-amy-medium',
+        wasmPaths: {
+          onnxWasm: ONNX_WASM_BASE,
+          piperData: 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize.data',
+          piperWasm: 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize.wasm',
+        },
+      });
+      await session.waitReady;
+      initialized = true;
+      setState({
+        piperModelLoaded: true,
+        piperDownloadProgress: 100,
+      });
+    } catch (retryErr) {
+      console.error('PiperTTS: retry after flush also failed', retryErr);
+      initializing = false;
+      throw retryErr;
+    }
   }
 }
 
@@ -44,9 +84,9 @@ export function listVoices() {
 }
 
 export async function generate(text, { voice = 'en_US-amy-medium', speed = 1.0 } = {}) {
-  if (!piperModule || !initialized) await init();
+  if (!session || !initialized) await init();
 
-  const wavBlob = await piperModule.predict({ text, voiceId: voice });
+  const wavBlob = await session.predict(text);
   return { audio: wavBlob };
 }
 

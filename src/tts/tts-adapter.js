@@ -1,6 +1,6 @@
 /**
  * TTS Adapter interface documentation.
- * Both KokoroTTS and WebSpeechTTS implement this interface.
+ * Both PiperTTS and WebSpeechTTS implement this interface.
  *
  * @typedef {Object} TTSVoice
  * @property {string} id

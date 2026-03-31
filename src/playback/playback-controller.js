@@ -6,7 +6,7 @@
  * Pre-generates next 5 chunks while current plays (double-buffering).
  */
 import { getState, setState } from '../store.js';
-import { splitIntoChunks, KOKORO_CHUNK_LENGTH } from '../tts/text-chunker.js';
+import { splitIntoChunks, PIPER_CHUNK_LENGTH } from '../tts/text-chunker.js';
 import * as PiperTTS from '../tts/piper-tts.js';
 import * as WebSpeechTTS from '../tts/web-speech-tts.js';
 import * as AudioManager from './audio-manager.js';
@@ -36,7 +36,7 @@ export function setCallbacks({ chunkStart, chunkEnd, finished, stateChange }) {
 export function setText(text, startChunkIndex = 0) {
   stop();
   const state = getState();
-  const maxLen = state.ttsEngine === 'piper' ? KOKORO_CHUNK_LENGTH : undefined;
+  const maxLen = state.ttsEngine === 'piper' ? PIPER_CHUNK_LENGTH : undefined;
   chunks = splitIntoChunks(text, maxLen);
   currentChunkIndex = Math.min(startChunkIndex, chunks.length - 1);
   audioQueue = [];
@@ -48,7 +48,7 @@ export async function play() {
   if (isPaused) {
     const state = getState();
     if (state.ttsEngine === 'piper') {
-      AudioManager.resumeKokoroAudio();
+      AudioManager.resumePiperAudio();
     } else {
       WebSpeechTTS.resume();
     }
@@ -217,7 +217,7 @@ export function pause() {
   if (!isPlaying) return;
   const state = getState();
   if (state.ttsEngine === 'piper') {
-    AudioManager.pauseKokoroAudio();
+    AudioManager.pausePiperAudio();
   } else {
     WebSpeechTTS.pause();
   }
@@ -232,7 +232,7 @@ export function stop() {
   isPaused = false;
   audioQueue = [];
   prefetchPromises.clear();
-  AudioManager.stopKokoroAudio();
+  AudioManager.stopPiperAudio();
   WebSpeechTTS.stop();
   WebSpeechTTS.clearKeepAlive();
   emitStateChange('stopped');
@@ -241,7 +241,7 @@ export function stop() {
 export function setRate(newRate) {
   const state = getState();
   if (state.ttsEngine === 'piper') {
-    AudioManager.setKokoroPlaybackRate(newRate);
+    AudioManager.setPiperPlaybackRate(newRate);
     // Clear pre-fetch queue to regenerate at new speed
     audioQueue = [];
   } else {

@@ -1,13 +1,13 @@
 /**
  * Audio session management: silent audio keep-alive, Media Session API,
- * and real <audio> element for Kokoro TTS playback.
+ * and real <audio> element for Piper TTS playback.
  */
 import { getState } from '../store.js';
 
 let audioCtx = null;
 let silentSource = null;
 let silentAudio = null;
-let kokoroAudioEl = null;
+let piperAudioEl = null;
 
 /**
  * Create a looping silent audio element for media session + background keep-alive.
@@ -19,9 +19,9 @@ export function setupMediaSession(handlers) {
   silentAudio.loop = true;
   silentAudio.volume = 0.01;
 
-  // Create the Kokoro audio element for real WAV playback
-  kokoroAudioEl = document.createElement('audio');
-  kokoroAudioEl.preload = 'auto';
+  // Create the Piper audio element for real WAV playback
+  piperAudioEl = document.createElement('audio');
+  piperAudioEl.preload = 'auto';
 
   if ('mediaSession' in navigator) {
     const ms = navigator.mediaSession;
@@ -47,7 +47,7 @@ export function updateMediaSessionPlaybackState(state, { keepAlive = false } = {
   }
 
   // Only start the silent audio/oscillator keep-alive for Web Speech.
-  // Kokoro uses a real <audio> element and doesn't need it.
+  // Piper uses a real <audio> element and doesn't need it.
   if (state === 'playing' && keepAlive) {
     startAudioKeepAlive();
   } else if (state !== 'playing') {
@@ -90,54 +90,54 @@ export function stopAudioKeepAlive() {
 }
 
 /**
- * Play a WAV blob via the Kokoro audio element.
+ * Play a WAV blob via the Piper audio element.
  * Returns a promise that resolves when playback ends.
  */
 export function playAudioBlob(blob, { playbackRate = 1.0 } = {}) {
   return new Promise((resolve, reject) => {
-    if (!kokoroAudioEl) {
-      kokoroAudioEl = document.createElement('audio');
-      kokoroAudioEl.preload = 'auto';
+    if (!piperAudioEl) {
+      piperAudioEl = document.createElement('audio');
+      piperAudioEl.preload = 'auto';
     }
 
     const url = URL.createObjectURL(blob);
-    kokoroAudioEl.src = url;
-    kokoroAudioEl.playbackRate = playbackRate;
+    piperAudioEl.src = url;
+    piperAudioEl.playbackRate = playbackRate;
 
-    kokoroAudioEl.onended = () => {
+    piperAudioEl.onended = () => {
       URL.revokeObjectURL(url);
       resolve();
     };
-    kokoroAudioEl.onerror = (e) => {
+    piperAudioEl.onerror = (e) => {
       URL.revokeObjectURL(url);
       reject(e);
     };
 
-    kokoroAudioEl.play().catch(reject);
+    piperAudioEl.play().catch(reject);
   });
 }
 
-export function stopKokoroAudio() {
-  if (kokoroAudioEl) {
-    kokoroAudioEl.pause();
-    kokoroAudioEl.src = '';
+export function stopPiperAudio() {
+  if (piperAudioEl) {
+    piperAudioEl.pause();
+    piperAudioEl.src = '';
   }
 }
 
-export function pauseKokoroAudio() {
-  if (kokoroAudioEl) kokoroAudioEl.pause();
+export function pausePiperAudio() {
+  if (piperAudioEl) piperAudioEl.pause();
 }
 
-export function resumeKokoroAudio() {
-  if (kokoroAudioEl) kokoroAudioEl.play().catch(() => {});
+export function resumePiperAudio() {
+  if (piperAudioEl) piperAudioEl.play().catch(() => {});
 }
 
-export function setKokoroPlaybackRate(rate) {
-  if (kokoroAudioEl) kokoroAudioEl.playbackRate = rate;
+export function setPiperPlaybackRate(rate) {
+  if (piperAudioEl) piperAudioEl.playbackRate = rate;
 }
 
-export function getKokoroAudioEl() {
-  return kokoroAudioEl;
+export function getPiperAudioEl() {
+  return piperAudioEl;
 }
 
 // --- Helpers ---

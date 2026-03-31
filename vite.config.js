@@ -14,14 +14,14 @@ export default defineConfig({
       registerType: 'autoUpdate',
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg}'],
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MB — Kokoro JS chunk is ~2.2 MB
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MB — Piper JS chunk is ~2.2 MB
         globIgnores: ['**/*.wasm'], // WASM files cached at runtime, not precache
         runtimeCaching: [
           {
             urlPattern: /\.onnx$/,
             handler: 'CacheFirst',
             options: {
-              cacheName: 'kokoro-model-cache',
+              cacheName: 'piper-onnx-cache',
               expiration: {
                 maxEntries: 10,
                 maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days

@@ -1,5 +1,5 @@
 /**
- * Web Speech API TTS adapter — fallback when Kokoro.js is unavailable.
+ * Web Speech API TTS adapter — fallback when Piper TTS is unavailable.
  * Wraps speechSynthesis with the same adapter interface.
  */
 
