@@ -18,6 +18,12 @@ export default defineConfig({
         globIgnores: ['**/*.wasm'], // WASM files cached at runtime, not precache
         runtimeCaching: [
           {
+            // Don't let the service worker intercept ES module dynamic imports —
+            // it breaks CORS for onnxruntime-web's .mjs WASM backend loader
+            urlPattern: /\.mjs$/i,
+            handler: 'NetworkOnly',
+          },
+          {
             urlPattern: /\.onnx$/,
             handler: 'CacheFirst',
             options: {
