@@ -11,17 +11,15 @@
   <meta name="description" content="">
 
   <!-- CSP -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; connect-src 'self' https://*.supabase.co; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; worker-src 'self';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://*.supabase.co https://huggingface.co https://cdn-lfs-us-1.hf.co https://cdn-lfs.hf.co; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; worker-src 'self' blob:;">
 
-  <!-- PWA -->
-  <link rel="manifest" href="manifest.json">
+  <!-- PWA (manifest injected by vite-plugin-pwa) -->
   <meta name="theme-color" content="#1a1a2e">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="EPUB Reader">
   <link rel="apple-touch-icon" href="icons/icon-192.svg">
 
-  <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
   <!-- Loading Spinner Overlay -->
@@ -243,17 +241,6 @@
   <!-- Toast -->
   <div id="toast" class="toast" hidden></div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"
-          integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG"
-          crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"
-          integrity="sha384-HS/sUFZexXk91zcjy7zGIBg3tNDxgxF8YbcifixByxxtxQoF2o8GBBT9p6DdGlAR"
-          crossorigin="anonymous"></script>
-  <script src="js/storage.js"></script>
-  <script src="js/supabase-sync.js"></script>
-  <script src="js/epub-parser.js"></script>
-  <script src="js/tts-engine.js"></script>
-  <script src="js/ui.js"></script>
-  <script src="js/app.js"></script>
+  <script type="module" src="/src/main.js"></script>
 </body>
 </html>
