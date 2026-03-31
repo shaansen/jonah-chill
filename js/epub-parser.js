@@ -5,6 +5,12 @@
  */
 const EpubParser = (() => {
 
+  // Size limits to prevent zip bombs and excessive resource usage
+  const MAX_COMPRESSED_SIZE = 500 * 1024 * 1024;   // 500 MB compressed
+  const MAX_DECOMPRESSED_SIZE = 2 * 1024 * 1024 * 1024; // 2 GB total decompressed
+  const MAX_SINGLE_FILE_SIZE = 100 * 1024 * 1024;  // 100 MB per file
+  const MAX_FILE_COUNT = 10000;
+
   // Known font obfuscation algorithms (not real DRM)
   const FONT_OBFUSCATION_ALGORITHMS = [
     'http://ns.adobe.com/pdf/enc#RC',
@@ -16,6 +22,11 @@ const EpubParser = (() => {
    */
   function getZipFile(zip, path) {
     if (!path) return null;
+    // Block path traversal attempts
+    if (path.includes('..') || path.startsWith('/')) {
+      console.warn('EpubParser: blocked suspicious path:', path);
+      return null;
+    }
     // Try exact path first
     let file = zip.file(path);
     if (file) return file;
@@ -101,7 +112,28 @@ const EpubParser = (() => {
    * Chapters are lazy-loaded stubs — call chapter.load() to get text.
    */
   async function parse(arrayBuffer) {
+    // Check compressed size
+    if (arrayBuffer.byteLength > MAX_COMPRESSED_SIZE) {
+      throw new Error(`EPUB too large (${Math.round(arrayBuffer.byteLength / 1024 / 1024)} MB). Max ${MAX_COMPRESSED_SIZE / 1024 / 1024} MB.`);
+    }
+
     const zip = await JSZip.loadAsync(arrayBuffer);
+
+    // Validate zip contents — check file count and estimate decompressed size
+    let totalUncompressed = 0;
+    let fileCount = 0;
+    zip.forEach((path, entry) => {
+      fileCount++;
+      if (entry._data && entry._data.uncompressedSize) {
+        totalUncompressed += entry._data.uncompressedSize;
+      }
+    });
+    if (fileCount > MAX_FILE_COUNT) {
+      throw new Error(`EPUB contains too many files (${fileCount}). Max ${MAX_FILE_COUNT}.`);
+    }
+    if (totalUncompressed > MAX_DECOMPRESSED_SIZE) {
+      throw new Error(`EPUB decompressed size too large. Possible zip bomb.`);
+    }
 
     // DRM check first
     await checkDRM(zip);

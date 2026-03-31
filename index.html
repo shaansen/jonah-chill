@@ -10,6 +10,9 @@
   <meta name="googlebot" content="noindex, nofollow">
   <meta name="description" content="">
 
+  <!-- CSP -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; connect-src 'self' https://*.supabase.co; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; worker-src 'self';">
+
   <!-- PWA -->
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#1a1a2e">
@@ -43,9 +46,41 @@
         <input type="file" id="file-input" accept=".epub" hidden>
       </label>
 
+      <!-- Auth button -->
+      <button id="btn-auth" class="auth-link" type="button">Sign in to sync</button>
+
       <div id="library-section" class="library-section" hidden>
         <h2>Library</h2>
         <div id="library-list" class="library-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Auth Drawer -->
+  <div id="auth-drawer" class="drawer" hidden>
+    <div class="drawer-backdrop"></div>
+    <div class="drawer-content">
+      <div class="drawer-header">
+        <h3 id="auth-drawer-title">Sign In</h3>
+        <button class="icon-btn drawer-close" aria-label="Close">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="auth-form" id="auth-form">
+        <input type="email" id="auth-email" class="auth-input" placeholder="Email" autocomplete="email">
+        <input type="password" id="auth-password" class="auth-input" placeholder="Password" autocomplete="current-password">
+        <button id="auth-submit" class="auth-submit-btn" type="button">Sign In</button>
+        <p class="auth-toggle">
+          <span id="auth-toggle-text">Don't have an account?</span>
+          <button id="auth-toggle-btn" class="auth-toggle-link" type="button">Sign Up</button>
+        </p>
+        <p id="auth-error" class="auth-error" hidden></p>
+      </div>
+      <div class="auth-signed-in" id="auth-signed-in" hidden>
+        <p class="auth-user-email" id="auth-user-email"></p>
+        <button id="auth-signout" class="auth-submit-btn auth-signout-btn" type="button">Sign Out</button>
       </div>
     </div>
   </div>
@@ -62,6 +97,17 @@
         <h2 id="book-title">Book Title</h2>
         <p id="book-author">Author</p>
       </div>
+      <button id="btn-save" class="icon-btn" aria-label="Save progress" title="Save progress">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+          <polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+        </svg>
+      </button>
+      <button id="btn-search" class="icon-btn" aria-label="Search in book">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+      </button>
       <button id="btn-chapters" class="icon-btn" aria-label="Chapter list">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
@@ -96,6 +142,26 @@
           <input type="text" id="chapter-search" class="chapter-search" placeholder="Search chapters..." aria-label="Search chapters">
         </div>
         <ul id="chapter-list" class="chapter-list"></ul>
+      </div>
+    </div>
+
+    <!-- Search Drawer -->
+    <div id="search-drawer" class="drawer" hidden>
+      <div class="drawer-backdrop"></div>
+      <div class="drawer-content">
+        <div class="drawer-header">
+          <h3>Search in Book</h3>
+          <button class="icon-btn drawer-close" aria-label="Close">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div class="drawer-search">
+          <input type="text" id="book-search-input" class="chapter-search" placeholder="Search text in book..." aria-label="Search text in book">
+        </div>
+        <div id="search-status" class="search-status" hidden></div>
+        <ul id="search-results" class="search-results"></ul>
       </div>
     </div>
 
@@ -177,8 +243,14 @@
   <!-- Toast -->
   <div id="toast" class="toast" hidden></div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"
+          integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG"
+          crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"
+          integrity="sha384-HS/sUFZexXk91zcjy7zGIBg3tNDxgxF8YbcifixByxxtxQoF2o8GBBT9p6DdGlAR"
+          crossorigin="anonymous"></script>
   <script src="js/storage.js"></script>
+  <script src="js/supabase-sync.js"></script>
   <script src="js/epub-parser.js"></script>
   <script src="js/tts-engine.js"></script>
   <script src="js/ui.js"></script>

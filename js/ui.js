@@ -19,6 +19,7 @@ const UI = (() => {
   const bookTitle = document.getElementById('book-title');
   const bookAuthor = document.getElementById('book-author');
   const btnBack = document.getElementById('btn-back');
+  const btnSave = document.getElementById('btn-save');
   const btnChapters = document.getElementById('btn-chapters');
 
   // Book progress
@@ -54,6 +55,29 @@ const UI = (() => {
   const chapterDrawer = document.getElementById('chapter-drawer');
   const chapterList = document.getElementById('chapter-list');
   const chapterSearch = document.getElementById('chapter-search');
+
+  // Auth
+  const btnAuth = document.getElementById('btn-auth');
+  const authDrawer = document.getElementById('auth-drawer');
+  const authDrawerTitle = document.getElementById('auth-drawer-title');
+  const authEmail = document.getElementById('auth-email');
+  const authPassword = document.getElementById('auth-password');
+  const authSubmit = document.getElementById('auth-submit');
+  const authToggleText = document.getElementById('auth-toggle-text');
+  const authToggleBtn = document.getElementById('auth-toggle-btn');
+  const authError = document.getElementById('auth-error');
+  const authForm = document.getElementById('auth-form');
+  const authSignedIn = document.getElementById('auth-signed-in');
+  const authUserEmail = document.getElementById('auth-user-email');
+  const authSignout = document.getElementById('auth-signout');
+  let authIsSignUp = false;
+
+  // Search drawer
+  const btnSearch = document.getElementById('btn-search');
+  const searchDrawer = document.getElementById('search-drawer');
+  const bookSearchInput = document.getElementById('book-search-input');
+  const searchResults = document.getElementById('search-results');
+  const searchStatus = document.getElementById('search-status');
 
   // Toast
   const toastEl = document.getElementById('toast');
@@ -209,8 +233,14 @@ const UI = (() => {
 
       const info = document.createElement('div');
       info.className = 'library-item-info';
-      info.innerHTML = `<div class="library-item-title">${escapeHtml(book.title)}</div>
-        <div class="library-item-author">${escapeHtml(book.author)}</div>`;
+      const titleDiv = document.createElement('div');
+      titleDiv.className = 'library-item-title';
+      titleDiv.textContent = book.title;
+      const authorDiv = document.createElement('div');
+      authorDiv.className = 'library-item-author';
+      authorDiv.textContent = book.author;
+      info.appendChild(titleDiv);
+      info.appendChild(authorDiv);
 
       const progress = document.createElement('span');
       progress.className = 'library-item-progress';
@@ -218,7 +248,7 @@ const UI = (() => {
 
       const deleteBtn = document.createElement('button');
       deleteBtn.className = 'library-item-delete';
-      deleteBtn.innerHTML = '&times;';
+      deleteBtn.textContent = '\u00d7';
       deleteBtn.title = 'Remove from library';
       deleteBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -276,18 +306,110 @@ const UI = (() => {
     }
   }
 
-  function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
+  // --- Auth Drawer ---
+
+  function showAuthDrawer() {
+    authDrawer.hidden = false;
+    authError.hidden = true;
+    authEmail.value = '';
+    authPassword.value = '';
+  }
+
+  function hideAuthDrawer() {
+    authDrawer.hidden = true;
+  }
+
+  function setAuthMode(isSignUp) {
+    authIsSignUp = isSignUp;
+    authDrawerTitle.textContent = isSignUp ? 'Sign Up' : 'Sign In';
+    authSubmit.textContent = isSignUp ? 'Sign Up' : 'Sign In';
+    authToggleText.textContent = isSignUp ? 'Already have an account?' : "Don't have an account?";
+    authToggleBtn.textContent = isSignUp ? 'Sign In' : 'Sign Up';
+    authError.hidden = true;
+  }
+
+  function setAuthState(user) {
+    if (user) {
+      btnAuth.textContent = user.email;
+      btnAuth.classList.add('signed-in');
+      authForm.hidden = true;
+      authSignedIn.hidden = false;
+      authUserEmail.textContent = user.email;
+    } else {
+      btnAuth.textContent = 'Sign in to sync';
+      btnAuth.classList.remove('signed-in');
+      authForm.hidden = false;
+      authSignedIn.hidden = true;
+    }
+  }
+
+  function showAuthError(msg) {
+    authError.textContent = msg;
+    authError.hidden = false;
+  }
+
+  // --- Search Drawer ---
+
+  function showSearchDrawer() {
+    searchDrawer.hidden = false;
+    bookSearchInput.value = '';
+    searchResults.innerHTML = '';
+    searchStatus.hidden = true;
+    setTimeout(() => bookSearchInput.focus(), 100);
+  }
+
+  function hideSearchDrawer() {
+    searchDrawer.hidden = true;
+  }
+
+  function renderSearchResults(results, onSelect) {
+    searchResults.innerHTML = '';
+    if (results.length === 0) {
+      searchStatus.textContent = 'No results found';
+      searchStatus.hidden = false;
+      return;
+    }
+    searchStatus.textContent = `${results.length} result${results.length !== 1 ? 's' : ''}`;
+    searchStatus.hidden = false;
+
+    results.forEach((r, i) => {
+      const li = document.createElement('li');
+      li.className = 'search-result-item';
+
+      const chTitle = document.createElement('div');
+      chTitle.className = 'search-result-chapter';
+      chTitle.textContent = r.chapterTitle;
+      li.appendChild(chTitle);
+
+      const snippet = document.createElement('div');
+      snippet.className = 'search-result-snippet';
+      snippet.textContent = r.snippet;
+      li.appendChild(snippet);
+
+      li.addEventListener('click', () => {
+        hideSearchDrawer();
+        onSelect(r);
+      });
+      searchResults.appendChild(li);
+    });
   }
 
   // Event binding
   let onChapterSelect = null;
+  let onSearchSelect = null;
 
   // Drawer backdrop close
   chapterDrawer.querySelector('.drawer-backdrop')?.addEventListener('click', hideChapterDrawer);
   chapterDrawer.querySelector('.drawer-close')?.addEventListener('click', hideChapterDrawer);
+
+  // Auth drawer events
+  authDrawer.querySelector('.drawer-backdrop')?.addEventListener('click', hideAuthDrawer);
+  authDrawer.querySelector('.drawer-close')?.addEventListener('click', hideAuthDrawer);
+  authToggleBtn?.addEventListener('click', () => setAuthMode(!authIsSignUp));
+
+  // Search drawer events
+  searchDrawer.querySelector('.drawer-backdrop')?.addEventListener('click', hideSearchDrawer);
+  searchDrawer.querySelector('.drawer-close')?.addEventListener('click', hideSearchDrawer);
 
   // Chapter search filter
   if (chapterSearch) {
@@ -319,9 +441,20 @@ const UI = (() => {
     showSleepMenu,
     hideSleepMenu,
     updateSleepCountdown,
+    // Auth
+    showAuthDrawer,
+    hideAuthDrawer,
+    setAuthMode,
+    setAuthState,
+    showAuthError,
+    // Search
+    showSearchDrawer,
+    hideSearchDrawer,
+    renderSearchResults,
     // Elements for event binding
     fileInput,
     btnBack,
+    btnSave,
     btnChapters,
     btnPlay,
     btnPrev,
@@ -333,6 +466,15 @@ const UI = (() => {
     progressBar,
     speedSlider,
     voiceSelect,
-    set onChapterSelect(fn) { onChapterSelect = fn; }
+    btnAuth,
+    authSubmit,
+    authEmail,
+    authPassword,
+    authSignout,
+    authIsSignUp: () => authIsSignUp,
+    btnSearch,
+    bookSearchInput,
+    set onChapterSelect(fn) { onChapterSelect = fn; },
+    set onSearchSelect(fn) { onSearchSelect = fn; }
   };
 })();

@@ -6,18 +6,33 @@ const Storage = (() => {
   const LIBRARY_KEY = 'epub-reader-library';
   const PREFS_KEY = 'epub-reader-prefs';
   const IDB_NAME = 'epub-reader-db';
-  const IDB_VERSION = 1;
+  const IDB_VERSION = 2;
   const IDB_STORE = 'epubs';
+  const IDB_LIBRARY_STORE = 'library';
 
   // --- IndexedDB ---
 
   function openDB() {
     return new Promise((resolve, reject) => {
       const req = indexedDB.open(IDB_NAME, IDB_VERSION);
-      req.onupgradeneeded = () => {
+      req.onupgradeneeded = (event) => {
         const db = req.result;
         if (!db.objectStoreNames.contains(IDB_STORE)) {
           db.createObjectStore(IDB_STORE);
+        }
+        if (!db.objectStoreNames.contains(IDB_LIBRARY_STORE)) {
+          db.createObjectStore(IDB_LIBRARY_STORE, { keyPath: 'id' });
+        }
+        // Migrate localStorage library to IDB on upgrade
+        if (event.oldVersion < 2) {
+          try {
+            const existing = JSON.parse(localStorage.getItem(LIBRARY_KEY)) || [];
+            if (existing.length > 0) {
+              const tx = req.transaction;
+              const store = tx.objectStore(IDB_LIBRARY_STORE);
+              existing.forEach(entry => store.put(entry));
+            }
+          } catch {}
         }
       };
       req.onsuccess = () => resolve(req.result);
@@ -55,48 +70,61 @@ const Storage = (() => {
     });
   }
 
-  // --- localStorage ---
+  // --- Library (IndexedDB) ---
 
-  function getLibrary() {
-    try {
-      return JSON.parse(localStorage.getItem(LIBRARY_KEY)) || [];
-    } catch {
-      return [];
-    }
+  async function getLibrary() {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_LIBRARY_STORE, 'readonly');
+      const req = tx.objectStore(IDB_LIBRARY_STORE).getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
   }
 
-  function saveLibrary(library) {
-    localStorage.setItem(LIBRARY_KEY, JSON.stringify(library));
+  async function saveBookProgress(bookId, data) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_LIBRARY_STORE, 'readwrite');
+      const store = tx.objectStore(IDB_LIBRARY_STORE);
+      const getReq = store.get(bookId);
+      getReq.onsuccess = () => {
+        const existing = getReq.result || {};
+        const entry = {
+          ...existing,
+          id: bookId,
+          title: data.title || 'Unknown',
+          author: data.author || 'Unknown',
+          chapter: data.chapter ?? 0,
+          chunkIndex: data.chunkIndex ?? 0,
+          totalChapters: data.totalChapters ?? 1,
+          lastRead: Date.now()
+        };
+        store.put(entry);
+      };
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
   }
 
-  function saveBookProgress(bookId, data) {
-    const library = getLibrary();
-    const idx = library.findIndex(b => b.id === bookId);
-    const entry = {
-      id: bookId,
-      title: data.title || 'Unknown',
-      author: data.author || 'Unknown',
-      chapter: data.chapter ?? 0,
-      chunkIndex: data.chunkIndex ?? 0,
-      totalChapters: data.totalChapters ?? 1,
-      lastRead: Date.now()
-    };
-    if (idx >= 0) {
-      library[idx] = { ...library[idx], ...entry };
-    } else {
-      library.push(entry);
-    }
-    saveLibrary(library);
+  async function getBookProgress(bookId) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_LIBRARY_STORE, 'readonly');
+      const req = tx.objectStore(IDB_LIBRARY_STORE).get(bookId);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
   }
 
-  function getBookProgress(bookId) {
-    const library = getLibrary();
-    return library.find(b => b.id === bookId) || null;
-  }
-
-  function removeBook(bookId) {
-    const library = getLibrary().filter(b => b.id !== bookId);
-    saveLibrary(library);
+  async function removeBook(bookId) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_LIBRARY_STORE, 'readwrite');
+      tx.objectStore(IDB_LIBRARY_STORE).delete(bookId);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
   }
 
   function getPrefs() {

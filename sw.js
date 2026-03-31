@@ -1,4 +1,4 @@
-const CACHE_NAME = 'epub-reader-v4';
+const CACHE_NAME = 'epub-reader-v7';
 const ASSETS = [
   './',
   './index.html',
@@ -7,12 +7,14 @@ const ASSETS = [
   './js/epub-parser.js',
   './js/tts-engine.js',
   './js/storage.js',
+  './js/supabase-sync.js',
   './js/ui.js',
   './js/epub-worker.js',
   './manifest.json',
   './icons/icon-192.svg',
   './icons/icon-512.svg',
-  'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'
+  'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js'
 ];
 
 // Install: precache all assets
@@ -40,7 +42,8 @@ self.addEventListener('fetch', (event) => {
       return cached || fetch(event.request).then(response => {
         // Only cache same-origin and CDN requests
         if (response.ok && (event.request.url.startsWith(self.location.origin) ||
-            event.request.url.includes('cdnjs.cloudflare.com'))) {
+            event.request.url.includes('cdnjs.cloudflare.com') ||
+            event.request.url.includes('cdn.jsdelivr.net'))) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
         }

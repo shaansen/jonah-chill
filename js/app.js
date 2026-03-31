@@ -38,6 +38,10 @@ const App = (() => {
     // Initialize web worker
     initWorker();
 
+    // Initialize Supabase sync
+    SupabaseSync.init();
+    initAuth();
+
     // Load voices
     voices = await TTSEngine.loadVoices();
     const prefs = Storage.getPrefs();
@@ -90,7 +94,15 @@ const App = (() => {
     TTSEngine.onStateChange = (state) => {
       UI.setPlayState(state === 'playing');
       updateMediaSessionState(state);
+      // Save progress on pause
+      if (state === 'paused') {
+        saveProgress();
+      }
     };
+
+    // Save progress when app is closed or navigated away
+    window.addEventListener('beforeunload', () => saveProgress());
+    window.addEventListener('pagehide', () => saveProgress());
   }
 
   function initWorker() {
@@ -117,6 +129,96 @@ const App = (() => {
     });
   }
 
+  // --- Auth ---
+
+  async function initAuth() {
+    if (!SupabaseSync.isEnabled()) return;
+    try {
+      const user = await SupabaseSync.getUser();
+      UI.setAuthState(user);
+    } catch {}
+    SupabaseSync.onAuthChange((user) => {
+      UI.setAuthState(user);
+      if (user) {
+        mergeRemoteProgress();
+      }
+    });
+  }
+
+  async function mergeRemoteProgress() {
+    try {
+      const remote = await SupabaseSync.pullAllProgress();
+      if (!remote || remote.length === 0) return;
+      for (const r of remote) {
+        const local = await Storage.getBookProgress(r.id);
+        if (!local || (r.lastRead && r.lastRead > (local.lastRead || 0))) {
+          await Storage.saveBookProgress(r.id, {
+            title: r.title,
+            author: r.author,
+            chapter: r.chapter,
+            chunkIndex: r.chunkIndex,
+            totalChapters: r.totalChapters
+          });
+        }
+      }
+      refreshLibrary();
+    } catch (err) {
+      console.warn('mergeRemoteProgress failed:', err);
+    }
+  }
+
+  // --- Search ---
+
+  let searchDebounce = null;
+
+  async function searchBook(query) {
+    if (!book || !query || query.length < 2) return [];
+    const q = query.toLowerCase();
+    const results = [];
+    const maxResults = 50;
+
+    for (let ci = 0; ci < book.chapters.length; ci++) {
+      if (results.length >= maxResults) break;
+      await loadChapterText(ci);
+      const ch = book.chapters[ci];
+      const text = ch.text || '';
+      const lower = text.toLowerCase();
+      let pos = 0;
+      while (pos < lower.length && results.length < maxResults) {
+        const idx = lower.indexOf(q, pos);
+        if (idx === -1) break;
+        const snippetStart = Math.max(0, idx - 40);
+        const snippetEnd = Math.min(text.length, idx + query.length + 40);
+        const snippet = (snippetStart > 0 ? '...' : '') +
+          text.substring(snippetStart, snippetEnd) +
+          (snippetEnd < text.length ? '...' : '');
+        results.push({
+          chapterIndex: ci,
+          chapterTitle: ch.title,
+          snippet,
+          charOffset: idx
+        });
+        pos = idx + query.length;
+      }
+    }
+    return results;
+  }
+
+  function findChunkForOffset(text, charOffset) {
+    // TTS chunks text by sentences ~200 chars. Estimate chunk index.
+    const chunks = TTSEngine.getChunksForText ? TTSEngine.getChunksForText(text) : null;
+    if (!chunks || chunks.length === 0) {
+      // Fallback: estimate assuming ~200 chars per chunk
+      return Math.floor(charOffset / 200);
+    }
+    let pos = 0;
+    for (let i = 0; i < chunks.length; i++) {
+      if (pos + chunks[i].length > charOffset) return i;
+      pos += chunks[i].length;
+    }
+    return chunks.length - 1;
+  }
+
   function bindEvents() {
     // File upload
     UI.fileInput.addEventListener('change', async (e) => {
@@ -131,6 +233,11 @@ const App = (() => {
       saveProgress();
       UI.showView('upload');
       refreshLibrary();
+    });
+
+    // Save progress button
+    UI.btnSave.addEventListener('click', () => {
+      saveProgress(true);
     });
 
     // Play/Pause
@@ -234,6 +341,57 @@ const App = (() => {
       if (!document.hidden && TTSEngine.isPaused && book) {
         UI.toast('Playback paused. Tap play to resume.');
       }
+    });
+
+    // --- Auth events ---
+    UI.btnAuth.addEventListener('click', () => UI.showAuthDrawer());
+
+    UI.authSubmit.addEventListener('click', async () => {
+      const email = UI.authEmail.value.trim();
+      const pw = UI.authPassword.value;
+      if (!email || !pw) {
+        UI.showAuthError('Please enter email and password');
+        return;
+      }
+      try {
+        if (UI.authIsSignUp()) {
+          await SupabaseSync.signUp(email, pw);
+          UI.toast('Check your email to confirm sign-up');
+        } else {
+          await SupabaseSync.signIn(email, pw);
+          UI.toast('Signed in');
+          UI.hideAuthDrawer();
+        }
+      } catch (err) {
+        UI.showAuthError(err.message || 'Auth failed');
+      }
+    });
+
+    UI.authSignout.addEventListener('click', async () => {
+      await SupabaseSync.signOut();
+      UI.setAuthState(null);
+      UI.hideAuthDrawer();
+      UI.toast('Signed out');
+    });
+
+    // --- Search events ---
+    UI.btnSearch.addEventListener('click', () => UI.showSearchDrawer());
+
+    UI.bookSearchInput.addEventListener('input', (e) => {
+      clearTimeout(searchDebounce);
+      const query = e.target.value.trim();
+      if (query.length < 2) {
+        UI.renderSearchResults([], () => {});
+        return;
+      }
+      searchDebounce = setTimeout(async () => {
+        const results = await searchBook(query);
+        UI.renderSearchResults(results, (r) => {
+          goToChapter(r.chapterIndex, false, findChunkForOffset(
+            book.chapters[r.chapterIndex].text || '', r.charOffset
+          ));
+        });
+      }, 300);
     });
   }
 
@@ -538,8 +696,14 @@ const App = (() => {
         console.warn('Failed to save EPUB to IndexedDB:', err);
       }
 
-      // Check for saved progress
-      const saved = Storage.getBookProgress(bookId);
+      // Check for saved progress (local + remote merge)
+      let saved = await Storage.getBookProgress(bookId);
+      try {
+        const remote = await SupabaseSync.pullProgress(bookId);
+        if (remote && remote.lastRead && (!saved || remote.lastRead > (saved.lastRead || 0))) {
+          saved = remote;
+        }
+      } catch {}
 
       // Load first chapter + prefetch
       await loadChapterText(0);
@@ -579,8 +743,17 @@ const App = (() => {
       book = await EpubParser.parse(arrayBuffer);
       bookId = bookEntry.id;
 
-      currentChapter = bookEntry.chapter || 0;
-      const startChunk = bookEntry.chunkIndex || 0;
+      // Merge with remote progress if newer
+      let saved = bookEntry;
+      try {
+        const remote = await SupabaseSync.pullProgress(bookId);
+        if (remote && remote.lastRead && remote.lastRead > (saved.lastRead || 0)) {
+          saved = remote;
+        }
+      } catch {}
+
+      currentChapter = saved.chapter || 0;
+      const startChunk = saved.chunkIndex || 0;
 
       await loadChapterText(currentChapter);
 
@@ -675,22 +848,30 @@ const App = (() => {
     saveProgress();
   }
 
-  function saveProgress() {
+  function saveProgress(showToast = false) {
     if (!book || !bookId) return;
     const progress = TTSEngine.getProgress();
-    Storage.saveBookProgress(bookId, {
+    const data = {
       title: book.title,
       author: book.author,
       chapter: currentChapter,
       chunkIndex: progress.chunkIndex,
       totalChapters: book.chapters.length
+    };
+    Storage.saveBookProgress(bookId, data).then(() => {
+      if (showToast) UI.toast('Progress saved');
+      // Fire-and-forget cloud sync
+      SupabaseSync.pushProgress(bookId, { ...data, lastRead: Date.now() });
+    }).catch(err => {
+      console.warn('Failed to save progress:', err);
+      if (showToast) UI.toast('Failed to save progress');
     });
   }
 
   async function refreshLibrary() {
-    const books = Storage.getLibrary();
+    const books = await Storage.getLibrary();
 
-    // Prune library entries that have no IDB data (stale from before IndexedDB)
+    // Prune library entries that have no IDB data (stale)
     const validBooks = [];
     for (const b of books) {
       try {
@@ -698,7 +879,7 @@ const App = (() => {
         if (data) {
           validBooks.push(b);
         } else {
-          Storage.removeBook(b.id);
+          await Storage.removeBook(b.id);
         }
       } catch {
         validBooks.push(b); // Keep on IDB error to be safe
@@ -712,8 +893,8 @@ const App = (() => {
         loadFromIDB(bookEntry);
       },
       // On delete
-      (id) => {
-        Storage.removeBook(id);
+      async (id) => {
+        await Storage.removeBook(id);
         Storage.removeEpubData(id).catch(() => {});
         refreshLibrary();
       }
