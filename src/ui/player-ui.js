@@ -12,6 +12,8 @@ const btnSkipBack = document.getElementById('btn-skip-back');
 const btnSkipForward = document.getElementById('btn-skip-forward');
 const progressBar = document.getElementById('progress-bar');
 
+const engineSelect = document.getElementById('engine-select');
+
 export function bindEvents({
   onBack,
   onSave,
@@ -22,6 +24,7 @@ export function bindEvents({
   onSkipForward,
   onSpeedChange,
   onVoiceChange,
+  onEngineChange,
   onProgressSeek,
   getBook,
 }) {
@@ -42,6 +45,12 @@ export function bindEvents({
   UI.elements.voiceSelect.addEventListener('change', (e) => {
     onVoiceChange(e.target.value);
   });
+
+  if (engineSelect) {
+    engineSelect.addEventListener('change', (e) => {
+      onEngineChange(e.target.value);
+    });
+  }
 
   progressBar.addEventListener('click', (e) => {
     const rect = progressBar.getBoundingClientRect();

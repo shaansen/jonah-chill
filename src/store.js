@@ -12,9 +12,9 @@ const state = {
   totalChunks: 0,
   speed: 1.0,
   selectedVoiceId: null,
-  ttsEngine: 'kokoro', // 'kokoro' | 'webSpeech'
-  kokoroModelLoaded: false,
-  kokoroDownloadProgress: 0,
+  ttsEngine: 'piper', // 'piper' | 'webSpeech'
+  piperModelLoaded: false,
+  piperDownloadProgress: 0,
   chapterWordCounts: [],
   chapterCharCounts: [],
   totalChars: 0,

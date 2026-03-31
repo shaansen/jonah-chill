@@ -9,7 +9,7 @@ import * as SupabaseSync from './supabase-sync.js';
 import * as PlaybackController from './playback/playback-controller.js';
 import * as AudioManager from './playback/audio-manager.js';
 import * as SleepTimer from './playback/sleep-timer.js';
-import * as KokoroTTS from './tts/kokoro-tts.js';
+import * as PiperTTS from './tts/piper-tts.js';
 import * as WebSpeechTTS from './tts/web-speech-tts.js';
 import * as UI from './ui/ui.js';
 import * as PlayerUI from './ui/player-ui.js';
@@ -23,13 +23,17 @@ async function init() {
   SupabaseSync.init();
   initAuth();
 
-  // Load voices — try Kokoro voices first, fall back to Web Speech
+  // Load voices — try Piper voices first, fall back to Web Speech
   await WebSpeechTTS.init();
   const prefs = Storage.getPrefs();
 
   // Determine initial TTS engine
-  const preferredEngine = prefs.ttsEngine || (KokoroTTS.isAvailable() ? 'kokoro' : 'webSpeech');
+  const preferredEngine = prefs.ttsEngine || (PiperTTS.isAvailable() ? 'piper' : 'webSpeech');
   setState({ ttsEngine: preferredEngine, speed: prefs.rate || 1.0 });
+
+  // Set initial engine selector value
+  const engineSelect = document.getElementById('engine-select');
+  if (engineSelect) engineSelect.value = preferredEngine;
 
   // Populate voice selector
   populateVoiceSelector(preferredEngine, prefs.voiceURI);
@@ -110,8 +114,8 @@ async function init() {
 }
 
 function populateVoiceSelector(engine, savedVoiceURI) {
-  if (engine === 'kokoro') {
-    const voices = KokoroTTS.listVoices();
+  if (engine === 'piper') {
+    const voices = PiperTTS.listVoices();
     UI.populateVoices(voices, savedVoiceURI);
   } else {
     const voices = WebSpeechTTS.listVoices();
@@ -183,6 +187,24 @@ function bindAllEvents() {
       PlaybackController.setVoice(voiceId);
       Storage.savePrefs({ voiceURI: voiceId });
       setState({ selectedVoiceId: voiceId });
+    },
+    onEngineChange: (engineId) => {
+      const wasPlaying = PlaybackController.getIsPlaying();
+      PlaybackController.stop();
+      setState({ ttsEngine: engineId });
+      Storage.savePrefs({ ttsEngine: engineId });
+      populateVoiceSelector(engineId, null);
+
+      // Re-set chapter text with appropriate chunk size
+      const state = getState();
+      if (state.book) {
+        const chapter = state.book.chapters[state.currentChapter];
+        if (chapter) {
+          PlaybackController.setText(chapter.text, state.currentChunkIndex);
+        }
+      }
+
+      if (wasPlaying) PlaybackController.play();
     },
     onProgressSeek: (pct) => {
       const state = getState();

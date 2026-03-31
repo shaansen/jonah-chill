@@ -1,13 +1,13 @@
 /**
  * Playback controller — orchestrates TTS engines + audio playback.
- * Tries Kokoro first, falls back to Web Speech.
- * For Kokoro: generates WAV blobs → plays via <audio> element.
+ * Tries Piper first, falls back to Web Speech.
+ * For Piper: generates WAV blobs → plays via <audio> element.
  * For Web Speech: uses speechSynthesis.speak() + silent audio keep-alive.
- * Pre-generates next 2 chunks while current plays (double-buffering).
+ * Pre-generates next 5 chunks while current plays (double-buffering).
  */
 import { getState, setState } from '../store.js';
 import { splitIntoChunks, KOKORO_CHUNK_LENGTH } from '../tts/text-chunker.js';
-import * as KokoroTTS from '../tts/kokoro-tts.js';
+import * as PiperTTS from '../tts/piper-tts.js';
 import * as WebSpeechTTS from '../tts/web-speech-tts.js';
 import * as AudioManager from './audio-manager.js';
 
@@ -17,7 +17,7 @@ let isPlaying = false;
 let isPaused = false;
 let stopped = false;
 
-// Double-buffering queue for Kokoro
+// Double-buffering queue for blob-based TTS
 let audioQueue = []; // Array of { blob: Blob, chunkIndex: number }
 
 // Callbacks
@@ -36,7 +36,7 @@ export function setCallbacks({ chunkStart, chunkEnd, finished, stateChange }) {
 export function setText(text, startChunkIndex = 0) {
   stop();
   const state = getState();
-  const maxLen = state.ttsEngine === 'kokoro' ? KOKORO_CHUNK_LENGTH : undefined;
+  const maxLen = state.ttsEngine === 'piper' ? KOKORO_CHUNK_LENGTH : undefined;
   chunks = splitIntoChunks(text, maxLen);
   currentChunkIndex = Math.min(startChunkIndex, chunks.length - 1);
   audioQueue = [];
@@ -47,7 +47,7 @@ export function setText(text, startChunkIndex = 0) {
 export async function play() {
   if (isPaused) {
     const state = getState();
-    if (state.ttsEngine === 'kokoro') {
+    if (state.ttsEngine === 'piper') {
       AudioManager.resumeKokoroAudio();
     } else {
       WebSpeechTTS.resume();
@@ -68,16 +68,16 @@ export async function play() {
 
   const state = getState();
 
-  // Try Kokoro first
-  if (state.ttsEngine === 'kokoro' && KokoroTTS.isAvailable()) {
+  // Try Piper first
+  if (state.ttsEngine === 'piper' && PiperTTS.isAvailable()) {
     try {
-      if (!KokoroTTS.isReady()) {
-        await KokoroTTS.init();
+      if (!PiperTTS.isReady()) {
+        await PiperTTS.init();
       }
-      await playKokoroLoop();
+      await playBlobLoop(PiperTTS);
       return;
     } catch (err) {
-      console.warn('Kokoro TTS failed, falling back to Web Speech:', err);
+      console.warn('Piper TTS failed, falling back to Web Speech:', err);
       setState({ ttsEngine: 'webSpeech' });
     }
   }
@@ -86,9 +86,9 @@ export async function play() {
   playWebSpeechLoop();
 }
 
-async function playKokoroLoop() {
+async function playBlobLoop(engine) {
   // Kick off prefetch for the first few chunks immediately
-  prefetchKokoroChunks(currentChunkIndex, 5);
+  prefetchBlobChunks(engine, currentChunkIndex, 5);
 
   while (isPlaying && !stopped && currentChunkIndex < chunks.length) {
     const idx = currentChunkIndex;
@@ -100,16 +100,16 @@ async function playKokoroLoop() {
     let audioBlob = await waitForPrefetch(idx);
     if (!audioBlob) {
       const state = getState();
-      const voice = state.selectedVoiceId || 'af_sky';
+      const voice = state.selectedVoiceId || 'en_US-amy-medium';
       const speed = state.speed || 1.0;
-      const result = await KokoroTTS.generate(text, { voice, speed });
+      const result = await engine.generate(text, { voice, speed });
       audioBlob = result.audio;
     }
 
     if (!isPlaying || stopped) break;
 
     // Pre-fetch ahead while current chunk plays
-    prefetchKokoroChunks(idx + 1, 5);
+    prefetchBlobChunks(engine, idx + 1, 5);
 
     // Play the audio blob
     try {
@@ -137,9 +137,9 @@ async function playKokoroLoop() {
 // Track in-flight prefetch promises so we can await them
 let prefetchPromises = new Map(); // chunkIndex -> Promise<Blob>
 
-function prefetchKokoroChunks(startIdx, count) {
+function prefetchBlobChunks(engine, startIdx, count) {
   const state = getState();
-  const voice = state.selectedVoiceId || 'af_sky';
+  const voice = state.selectedVoiceId || 'en_US-amy-medium';
   const speed = state.speed || 1.0;
 
   for (let i = startIdx; i < startIdx + count && i < chunks.length; i++) {
@@ -147,7 +147,7 @@ function prefetchKokoroChunks(startIdx, count) {
     if (audioQueue.some(q => q.chunkIndex === idx)) continue;
     if (prefetchPromises.has(idx)) continue;
 
-    const promise = KokoroTTS.generate(chunks[idx], { voice, speed }).then(result => {
+    const promise = engine.generate(chunks[idx], { voice, speed }).then(result => {
       prefetchPromises.delete(idx);
       if (!stopped) {
         audioQueue.push({ chunkIndex: idx, blob: result.audio });
@@ -216,7 +216,7 @@ function playWebSpeechLoop() {
 export function pause() {
   if (!isPlaying) return;
   const state = getState();
-  if (state.ttsEngine === 'kokoro') {
+  if (state.ttsEngine === 'piper') {
     AudioManager.pauseKokoroAudio();
   } else {
     WebSpeechTTS.pause();
@@ -240,7 +240,7 @@ export function stop() {
 
 export function setRate(newRate) {
   const state = getState();
-  if (state.ttsEngine === 'kokoro') {
+  if (state.ttsEngine === 'piper') {
     AudioManager.setKokoroPlaybackRate(newRate);
     // Clear pre-fetch queue to regenerate at new speed
     audioQueue = [];

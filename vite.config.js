@@ -32,6 +32,20 @@ export default defineConfig({
             },
           },
           {
+            urlPattern: /^https:\/\/huggingface\.co\/diffusionstudio\/piper-voices\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'piper-model-cache',
+              expiration: {
+                maxEntries: 5,
+                maxAgeSeconds: 60 * 60 * 24 * 30,
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+          {
             urlPattern: /^https:\/\/cdn\.jsdelivr\.net\/.*/i,
             handler: 'CacheFirst',
             options: {
