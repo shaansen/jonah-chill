@@ -19,7 +19,6 @@ let stopped = false;
 
 // Double-buffering queue for Kokoro
 let audioQueue = []; // Array of { blob: Blob, chunkIndex: number }
-let prefetchPromise = null;
 
 // Callbacks
 let onChunkStart = null;
@@ -39,6 +38,7 @@ export function setText(text, startChunkIndex = 0) {
   chunks = splitIntoChunks(text);
   currentChunkIndex = Math.min(startChunkIndex, chunks.length - 1);
   audioQueue = [];
+  prefetchPromises.clear();
   setState({ currentChunkIndex, totalChunks: chunks.length });
 }
 
@@ -85,19 +85,18 @@ export async function play() {
 }
 
 async function playKokoroLoop() {
+  // Kick off prefetch for the first few chunks immediately
+  prefetchKokoroChunks(currentChunkIndex, 3);
+
   while (isPlaying && !stopped && currentChunkIndex < chunks.length) {
     const idx = currentChunkIndex;
     const text = chunks[idx];
 
     onChunkStart?.(idx, text, chunks.length);
 
-    // Check if we have a pre-fetched blob
-    let audioBlob;
-    const queued = audioQueue.find(q => q.chunkIndex === idx);
-    if (queued) {
-      audioBlob = queued.blob;
-      audioQueue = audioQueue.filter(q => q.chunkIndex !== idx);
-    } else {
+    // Wait for pre-fetched blob, or generate if not ready
+    let audioBlob = await waitForPrefetch(idx);
+    if (!audioBlob) {
       const state = getState();
       const voice = state.selectedVoiceId || 'af_sky';
       const speed = state.speed || 1.0;
@@ -107,8 +106,8 @@ async function playKokoroLoop() {
 
     if (!isPlaying || stopped) break;
 
-    // Pre-fetch next 2 chunks
-    prefetchKokoroChunks(idx + 1, 2);
+    // Pre-fetch ahead while current chunk plays
+    prefetchKokoroChunks(idx + 1, 3);
 
     // Play the audio blob
     try {
@@ -133,6 +132,9 @@ async function playKokoroLoop() {
   }
 }
 
+// Track in-flight prefetch promises so we can await them
+let prefetchPromises = new Map(); // chunkIndex -> Promise<Blob>
+
 function prefetchKokoroChunks(startIdx, count) {
   const state = getState();
   const voice = state.selectedVoiceId || 'af_sky';
@@ -141,12 +143,38 @@ function prefetchKokoroChunks(startIdx, count) {
   for (let i = startIdx; i < startIdx + count && i < chunks.length; i++) {
     const idx = i;
     if (audioQueue.some(q => q.chunkIndex === idx)) continue;
-    KokoroTTS.generate(chunks[idx], { voice, speed }).then(result => {
+    if (prefetchPromises.has(idx)) continue;
+
+    const promise = KokoroTTS.generate(chunks[idx], { voice, speed }).then(result => {
+      prefetchPromises.delete(idx);
       if (!stopped) {
         audioQueue.push({ chunkIndex: idx, blob: result.audio });
       }
-    }).catch(() => { /* prefetch failure is non-critical */ });
+      return result.audio;
+    }).catch((err) => {
+      prefetchPromises.delete(idx);
+      return null;
+    });
+    prefetchPromises.set(idx, promise);
   }
+}
+
+async function waitForPrefetch(idx) {
+  // Check if already in the completed queue
+  const queued = audioQueue.find(q => q.chunkIndex === idx);
+  if (queued) {
+    audioQueue = audioQueue.filter(q => q.chunkIndex !== idx);
+    return queued.blob;
+  }
+  // Check if there's an in-flight prefetch we can await
+  const pending = prefetchPromises.get(idx);
+  if (pending) {
+    const blob = await pending;
+    // Remove from queue since we're consuming it directly
+    audioQueue = audioQueue.filter(q => q.chunkIndex !== idx);
+    return blob;
+  }
+  return null;
 }
 
 function playWebSpeechLoop() {
@@ -201,6 +229,7 @@ export function stop() {
   isPlaying = false;
   isPaused = false;
   audioQueue = [];
+  prefetchPromises.clear();
   AudioManager.stopKokoroAudio();
   WebSpeechTTS.stop();
   WebSpeechTTS.clearKeepAlive();
