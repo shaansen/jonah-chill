@@ -81,7 +81,8 @@ async function init() {
     },
     stateChange: (playState) => {
       UI.setPlayState(playState === 'playing');
-      AudioManager.updateMediaSessionPlaybackState(playState);
+      const needsKeepAlive = getState().ttsEngine === 'webSpeech';
+      AudioManager.updateMediaSessionPlaybackState(playState, { keepAlive: needsKeepAlive });
       if (playState === 'paused') {
         saveProgress();
       }

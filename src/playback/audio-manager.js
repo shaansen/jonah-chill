@@ -41,14 +41,16 @@ export function updateMediaSessionMetadata(title, artist, album) {
   navigator.mediaSession.metadata = new MediaMetadata({ title, artist, album });
 }
 
-export function updateMediaSessionPlaybackState(state) {
+export function updateMediaSessionPlaybackState(state, { keepAlive = false } = {}) {
   if ('mediaSession' in navigator) {
     navigator.mediaSession.playbackState = state === 'playing' ? 'playing' : 'paused';
   }
 
-  if (state === 'playing') {
+  // Only start the silent audio/oscillator keep-alive for Web Speech.
+  // Kokoro uses a real <audio> element and doesn't need it.
+  if (state === 'playing' && keepAlive) {
     startAudioKeepAlive();
-  } else {
+  } else if (state !== 'playing') {
     stopAudioKeepAlive();
   }
 }
@@ -69,7 +71,7 @@ export function startAudioKeepAlive() {
   if (!silentSource) {
     const oscillator = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
-    gain.gain.value = 0.001;
+    gain.gain.value = 0.0001;
     oscillator.connect(gain);
     gain.connect(audioCtx.destination);
     oscillator.start();
