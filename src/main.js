@@ -3,7 +3,7 @@
  */
 import '../css/styles.css';
 
-import { getState, setState } from './store.js';
+import { getState, setState, subscribe } from './store.js';
 import * as Storage from './storage.js';
 import * as SupabaseSync from './supabase-sync.js';
 import * as PlaybackController from './playback/playback-controller.js';
@@ -91,6 +91,11 @@ async function init() {
         saveProgress();
       }
     },
+  });
+
+  // Keep play/pause icon in sync with store (belt-and-suspenders)
+  subscribe('playbackState', (state) => {
+    UI.setPlayState(state.playbackState === 'playing');
   });
 
   // Sleep timer

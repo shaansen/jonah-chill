@@ -8,7 +8,7 @@ import * as SupabaseSync from '../supabase-sync.js';
 import * as PlaybackController from '../playback/playback-controller.js';
 import * as AudioManager from '../playback/audio-manager.js';
 import * as UI from '../ui/ui.js';
-import { splitIntoChunks } from '../tts/text-chunker.js';
+import { splitIntoChunks, PIPER_CHUNK_LENGTH } from '../tts/text-chunker.js';
 import { saveProgress, computeChapterStats, updateBookProgressBar, updateTimeRemainingDisplay } from './progress-actions.js';
 
 export async function loadFile(file) {
@@ -219,7 +219,9 @@ export async function searchBook(query) {
 }
 
 export function findChunkForOffset(text, charOffset) {
-  const chunks = splitIntoChunks(text);
+  const state = getState();
+  const maxLen = state.ttsEngine === 'piper' ? PIPER_CHUNK_LENGTH : undefined;
+  const chunks = splitIntoChunks(text, maxLen);
   if (!chunks || chunks.length === 0) return 0;
 
   let searchPos = 0;
