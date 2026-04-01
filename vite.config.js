@@ -15,7 +15,7 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg}'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MB — Piper JS chunk is ~2.2 MB
-        globIgnores: ['**/*.wasm'], // WASM files cached at runtime, not precache
+        globIgnores: ['**/*.wasm', '**/onnx/**'], // WASM + ONNX files cached at runtime, not precache
         runtimeCaching: [
           {
             // Don't let the service worker intercept ES module dynamic imports —

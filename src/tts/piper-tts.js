@@ -10,8 +10,14 @@ let session = null;
 let initialized = false;
 let initializing = false;
 
-// Use jsdelivr for ONNX WASM to match our CSP (library defaults to cdnjs.cloudflare.com)
-const ONNX_WASM_BASE = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/';
+// Serve ONNX WASM from same origin (public/onnx/) to avoid CORS + SW issues
+const ONNX_WASM_PATH = import.meta.env.BASE_URL + 'onnx/';
+
+const WASM_PATHS = {
+  onnxWasm: ONNX_WASM_PATH,
+  piperData: 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize.data',
+  piperWasm: 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize.wasm',
+};
 
 export async function init() {
   if (initialized || initializing) return;
@@ -29,14 +35,9 @@ export async function init() {
       }
     });
 
-    // Create session with wasmPaths overriding ONNX WASM to jsdelivr
     session = new piperModule.TtsSession({
       voiceId: 'en_US-amy-medium',
-      wasmPaths: {
-        onnxWasm: ONNX_WASM_BASE,
-        piperData: 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize.data',
-        piperWasm: 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize.wasm',
-      },
+      wasmPaths: WASM_PATHS,
     });
     await session.waitReady;
 
@@ -48,7 +49,7 @@ export async function init() {
   } catch (err) {
     console.error('PiperTTS: init failed, flushing cache and retrying...', err);
     try {
-      await piperModule.flush();
+      await piperModule.flush().catch(() => {});
       await piperModule.download('en_US-amy-medium', (progress) => {
         if (progress.total) {
           const pct = Math.round((progress.loaded / progress.total) * 100);
@@ -57,11 +58,7 @@ export async function init() {
       });
       session = new piperModule.TtsSession({
         voiceId: 'en_US-amy-medium',
-        wasmPaths: {
-          onnxWasm: ONNX_WASM_BASE,
-          piperData: 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize.data',
-          piperWasm: 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize.wasm',
-        },
+        wasmPaths: WASM_PATHS,
       });
       await session.waitReady;
       initialized = true;
